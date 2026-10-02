@@ -1,0 +1,11 @@
+# Generated Flutter/Android artifacts
+.dart_tool/
+.flutter-plugins-dependencies
+build/
+android/
+coverage/
+*.jks
+*.keystore
+key.properties
+*.env
+.DS_Store
