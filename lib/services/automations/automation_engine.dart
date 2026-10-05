@@ -123,8 +123,9 @@ class AutomationEngine {
   ) {
     // Ignore old/replayed observations instead of regressing node state.
     final previous = _nodes[node.id];
-    if (previous != null && node.lastHeard.isBefore(previous.lastHeard))
+    if (previous != null && node.lastHeard.isBefore(previous.lastHeard)) {
       return [];
+    }
     final isNew = previous == null;
     _nodes[node.id] = node;
     final alerts = <AutomationAlert>[];
@@ -206,8 +207,9 @@ class AutomationEngine {
     )) {
       for (final node in _nodes.values) {
         if (!_matches(rule, node.id) ||
-            node.lastHeard.millisecondsSinceEpoch <= 0)
+            node.lastHeard.millisecondsSinceEpoch <= 0) {
           continue;
+        }
         _evaluate(
           '${rule.id}:${node.id}',
           now.difference(node.lastHeard).inSeconds >= rule.threshold * 3600,
@@ -238,7 +240,8 @@ class AutomationEngine {
       _active.remove(key);
       return;
     }
-    if (_active.add(key))
+    if (_active.add(key)) {
       alerts.add(AutomationAlert(rule.id, node.id, message, now));
+    }
   }
 }
