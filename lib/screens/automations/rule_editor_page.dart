@@ -86,6 +86,14 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
           widget.rule == null ? 'Create local rule' : 'Edit local rule',
         ),
       ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.all(16),
+        child: FilledButton.icon(
+          onPressed: save,
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('SAVE RULE'),
+        ),
+      ),
       body: Form(
         key: form,
         child: ListView(
@@ -222,11 +230,6 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
             ),
             if (error != null)
               Text(error!, style: const TextStyle(color: Colors.orangeAccent)),
-            FilledButton.icon(
-              onPressed: save,
-              icon: const Icon(Icons.save_outlined),
-              label: const Text('SAVE RULE'),
-            ),
           ],
         ),
       ),

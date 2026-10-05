@@ -15,12 +15,17 @@ void main() {
     await tester.tap(find.text('ADD RULE'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('SAVE RULE'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('SAVE RULE'));
     await tester.pumpAndSettle();
     expect(find.text('Battery watch'), findsOneWidget);
+    await tester.ensureVisible(find.text('TEST WITH SIMULATED DATA'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('TEST WITH SIMULATED DATA'));
     await tester.pumpAndSettle();
     expect(find.textContaining('DEMO-REPEATER battery below'), findsOneWidget);
+    await tester.ensureVisible(find.byType(Switch));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
     final prefs = await SharedPreferences.getInstance();

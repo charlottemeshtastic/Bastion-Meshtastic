@@ -41,6 +41,7 @@ void main() {
       '101',
     );
     await tester.ensureVisible(find.text('SAVE RULE'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('SAVE RULE'));
     await tester.pumpAndSettle();
     expect(find.text('Use 1–100%.'), findsOneWidget);
@@ -56,6 +57,7 @@ void main() {
       'A1B2C3D4',
     );
     await tester.ensureVisible(find.text('SAVE RULE'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('SAVE RULE'));
     await tester.pumpAndSettle();
     expect(result!.name, 'Ridge watch');
