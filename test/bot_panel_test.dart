@@ -15,7 +15,7 @@ void main() {
       final session = RadioSession(nonce: () => 123);
       final transport = FakeTransport();
       final bot = BotController(session);
-      await bot.load();
+      await tester.runAsync(bot.load);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -29,7 +29,7 @@ void main() {
             .onChanged,
         isNull,
       );
-      await session.connect(transport);
+      await tester.runAsync(() => session.connect(transport));
       transport.emit(pb.FromRadio(myInfo: pb.MyNodeInfo(myNodeNum: 42)));
       transport.emit(pb.FromRadio(configCompleteId: 123));
       await tester.pumpAndSettle();
@@ -42,7 +42,7 @@ void main() {
       expect(bot.enabled, isFalse);
       await tester.tap(find.byKey(const Key('bot-mode-toggle')));
       await tester.pumpAndSettle();
-      await session.disconnect();
+      await tester.runAsync(session.disconnect);
       await tester.pumpAndSettle();
       expect(bot.enabled, isFalse);
       expect(
@@ -54,7 +54,7 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       bot.dispose();
       session.dispose();
-      await transport.finish();
+      await tester.runAsync(transport.finish);
     },
   );
 }
