@@ -176,6 +176,17 @@ void main() {
     incoming(text: '[Bastion bot] !help');
     expect(sends(), hasLength(1));
   });
+  test('OFF between receive callback and write cancels the reply', () async {
+    bot.setEnabled(true);
+    incoming();
+    bot.setEnabled(false);
+    await bot.sendComplete;
+    expect(sends(), isEmpty);
+    expect(
+      bot.activities.first.outcome,
+      'Cancelled before radio write · bot paused',
+    );
+  });
   test('malformed saved data remains intact and cannot enable', () async {
     bot.dispose();
     final prefs = await SharedPreferences.getInstance();

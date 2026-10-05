@@ -258,7 +258,11 @@ class BotController extends ChangeNotifier {
     _sending = activity;
     _sendingText = decision.text;
     _sendingDestination = decision.destination;
-    _sendComplete = _send(message, decision, activity);
+    // Exit the synchronous incoming stream callback before emitting an outgoing
+    // event on that same stream. This is not a timed reply or retry queue.
+    _sendComplete = Future<void>.microtask(
+      () => _send(message, decision, activity),
+    );
   }
 
   Future<void> _send(
@@ -267,7 +271,15 @@ class BotController extends ChangeNotifier {
     BotActivity activity,
   ) async {
     try {
-      // All gates are synchronous before sendText; there is no waiting queue.
+      // Recheck after the callback boundary so OFF/disconnect cancels the write.
+      if (_disposed ||
+          !enabled ||
+          armedRadio != incoming.radio ||
+          session.localNode != incoming.radio ||
+          session.status != RadioStatus.ready) {
+        activity.outcome = 'Cancelled before radio write · bot paused';
+        return;
+      }
       await session.sendText(
         decision.text!,
         channel: incoming.channel,
