@@ -32,3 +32,30 @@ Android application ID: `app.bastion.bastion_meshtastic` (separate from MeshCore
 Meshtastic's official Android app and protobuf definitions are GPL-3.0 licensed. Preserve applicable licenses and source-distribution obligations before integrating those components. Bastion Meshtastic is independent and not an official Meshtastic app.
 
 Do **not** use the MeshCore Bastion release keystore for this app.
+
+## Local automations preview
+
+The AUTO tab supports locally saved battery-below-20%, new-node and
+12-hour-silence alert presets. Add, disable or remove rules, then use
+**TEST WITH SIMULATED DATA** to preview alerts without radio hardware.
+Rules persist locally; simulated alerts are temporary and isolated.
+
+This first pass does not connect rules to BLE data, deliver Android system
+notifications, or run in the background. Silence checks in the engine require
+an active synchronized monitoring session. Repeated alerts are suppressed until
+a condition recovers. No paid API or server is used.
+
+## Focused development order
+
+- [x] Local rules engine, saved presets and explicit simulator.
+- [ ] Protocol: pinned official protobuf definitions, BLE GATT session,
+  configuration completion and verified node repository.
+- [ ] Connect node and telemetry events to local rules; persist alert history.
+- [ ] Android notification permission and foreground monitoring lifecycle.
+- [ ] Channel and direct messaging with delivery feedback and local history.
+- [ ] Positions/map, telemetry charts, traceroute and topology inspection.
+- [ ] Custom thresholds/targets, geofences and opt-in scheduled messages.
+- [ ] Hardware QA, signed release and supported transport expansion.
+
+Background monitoring requires Android lifecycle work and device testing;
+scheduled transmissions must respect radio connectivity and mesh airtime.

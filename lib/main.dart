@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'services/meshtastic_ble_discovery.dart';
+import 'screens/automations/automations_page.dart';
 
 void main() => runApp(const BastionMeshtasticApp());
 
@@ -35,12 +36,13 @@ class BastionShell extends StatefulWidget {
 class _BastionShellState extends State<BastionShell> {
   int index = 0;
   final ble = MeshtasticBleDiscovery();
-  static const labels = ['NODES', 'CHATS', 'MAP', 'TOOLS', 'SETTINGS'];
+  static const labels = ['NODES', 'CHATS', 'MAP', 'TOOLS', 'AUTO', 'SETTINGS'];
   static const icons = [
     Icons.hub_outlined,
     Icons.chat_bubble_outline,
     Icons.map_outlined,
     Icons.build_outlined,
+    Icons.bolt_outlined,
     Icons.settings_outlined,
   ];
 
@@ -84,6 +86,7 @@ class _BastionShellState extends State<BastionShell> {
           title: 'FIELD TOOLS',
           detail: 'Device configuration, traceroute, diagnostics, telemetry and coverage capture are planned.',
         ),
+        const AutomationsPage(),
         const _FeaturePage(
           icon: Icons.settings_outlined,
           title: 'SETTINGS',
