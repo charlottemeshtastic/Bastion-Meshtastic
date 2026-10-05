@@ -8,7 +8,7 @@ String radioDiagnostics(RadioSession session, {DateTime? now}) {
       .where((c) => c.role.name != 'DISABLED')
       .length;
   return [
-    'Bastion Meshtastic 0.3.0+3 · diagnostics',
+    'Bastion Meshtastic 0.4.0+4 · diagnostics',
     'Captured: ${(now ?? DateTime.now()).toUtc().toIso8601String()}',
     'Connection: ${session.status.name}',
     'Firmware: ${session.firmware ?? 'unknown'}',

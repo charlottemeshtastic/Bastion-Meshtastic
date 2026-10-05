@@ -168,3 +168,38 @@ scripts/prepare_android.py. Notification behavior requires Android device QA.
 SETTINGS → COPY DIAGNOSTICS copies firmware, connection state, local node identity,
 node/channel counts and malformed-frame count for support. It omits raw configuration,
 channel keys, channel names, messages, coordinates and Bluetooth addresses.
+
+## Bot Mode (v0.4)
+
+Open **AUTO → BOT SETTINGS** to customize an away reply, choose `!help` / `!status`,
+set a 1–60 minute sender cooldown, and optionally select channels for commands.
+Save, connect a radio, and switch **Bot Mode ON**. It defaults OFF on every app
+launch and turns OFF on disconnect, backgrounding, or settings changes. It is
+armed only for the current connected radio. There is no background service,
+server, AI service, subscription, scheduling, reply queue, or automatic retry.
+
+Normal direct messages can receive the custom away reply. Channel replies are
+OFF by default; if enabled, only exact `!help` and `!status` commands on explicitly
+selected, currently enabled channel indices trigger a broadcast reply. Ordinary
+channel conversations never trigger away replies. `!status` shares the radio ID,
+known-node count and foreground status, without coordinates, messages, channel
+keys or firmware/configuration contents. Direct-message encryption follows radio
+configuration, as it does for manually sent messages.
+
+Every reply starts with `[Bastion bot]`. The bot ignores this marker, outgoing
+messages/status events, duplicate packet IDs, invalid senders, missing packet IDs,
+messages older than two minutes, future-dated packets, and unknown `!commands`.
+One cooldown is shared across channels for each sender/radio pair. A global
+30-second spacing and **six reply attempts per rolling hour across all radios**
+are always enforced. Failed or unconfirmed writes consume the limit. Limits
+survive app restart, editing settings and clearing the activity log. These
+safeguards reduce loops and traffic; they cannot identify every third-party bot.
+A packet without a radio receive timestamp uses its local receipt time, so its
+original age cannot be verified.
+
+The activity log retains 100 entries and shows the latest 20, including skipped
+triggers and actual send-state updates. A radio write is not delivery; mesh
+acknowledgement is not a read receipt. Bot replies also appear in CHATS. Logs and
+settings stay on the phone; incoming message bodies are not duplicated in bot
+logs. Replies plus the bot marker must fit Meshtastic's 233-byte UTF-8 payload.
+Real-radio interoperability and Android lifecycle testing remain required.

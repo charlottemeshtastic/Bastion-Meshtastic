@@ -11,6 +11,7 @@ import 'services/meshtastic/radio_session.dart';
 import 'services/automations/automation_controller.dart';
 import 'services/automations/automation_engine.dart';
 import 'services/alert_notifications.dart';
+import 'services/bot/bot_controller.dart';
 import 'services/node_archive.dart';
 import 'models/telemetry_sample.dart';
 import 'screens/map/mesh_map_page.dart';
@@ -56,6 +57,7 @@ class _BastionShellState extends State<BastionShell>
   final chatHistory = ChatHistory();
   final nodeArchive = NodeArchive();
   late final AlertNotifications notifications;
+  late final BotController bot;
   StreamSubscription<AutomationAlert>? _liveAlerts;
   StreamSubscription<TelemetrySample>? _telemetry;
   StreamSubscription<ChatMessage>? _chatEvents;
@@ -67,6 +69,8 @@ class _BastionShellState extends State<BastionShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    bot = BotController(session);
+    unawaited(bot.load());
     notifications = AlertNotifications(
       onOpen: () {
         if (mounted) {
@@ -113,6 +117,7 @@ class _BastionShellState extends State<BastionShell>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
+      bot.pause();
       unawaited(session.disconnect());
       if (ble.scanning) {
         unawaited(ble.stop());
@@ -138,6 +143,7 @@ class _BastionShellState extends State<BastionShell>
     unawaited(_chatEvents?.cancel());
     unawaited(_telemetry?.cancel());
     unawaited(_liveAlerts?.cancel());
+    bot.dispose();
     notifications.dispose();
     nodeArchive.dispose();
     chatHistory.dispose();
@@ -186,6 +192,7 @@ class _BastionShellState extends State<BastionShell>
             session: session,
             archive: nodeArchive,
             notifications: notifications,
+            bot: bot,
           ),
           RadioInfoPage(session: session),
         ],

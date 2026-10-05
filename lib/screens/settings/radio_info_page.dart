@@ -25,7 +25,7 @@ class RadioInfoPage extends StatelessWidget {
         ),
         const ListTile(
           title: Text('App version'),
-          subtitle: Text('Bastion 0.3.0 · development build'),
+          subtitle: Text('Bastion 0.4.0 · development build'),
         ),
         ListTile(
           title: const Text('Firmware'),

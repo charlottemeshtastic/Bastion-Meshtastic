@@ -7,6 +7,8 @@ import '../../services/meshtastic/radio_session.dart';
 import '../../services/node_archive.dart';
 import '../../services/alert_notifications.dart';
 import 'rule_editor_page.dart';
+import '../../services/bot/bot_controller.dart';
+import 'bot_panel.dart';
 
 class AutomationsPage extends StatefulWidget {
   const AutomationsPage({
@@ -15,11 +17,13 @@ class AutomationsPage extends StatefulWidget {
     this.session,
     this.archive,
     this.notifications,
+    this.bot,
   });
   final AutomationController? controller;
   final RadioSession? session;
   final NodeArchive? archive;
   final AlertNotifications? notifications;
+  final BotController? bot;
   @override
   State<AutomationsPage> createState() => _AutomationsPageState();
 }
@@ -185,6 +189,7 @@ class _AutomationsPageState extends State<AutomationsPage> {
             ),
           ),
           if (_controller.loading) const LinearProgressIndicator(),
+          if (widget.bot != null) BotPanel(bot: widget.bot!),
           if (widget.notifications != null) ...[
             SwitchListTile(
               title: const Text('Android notifications'),
