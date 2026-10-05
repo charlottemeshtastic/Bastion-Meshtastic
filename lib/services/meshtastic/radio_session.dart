@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import '../../generated/meshtastic/mesh.pb.dart' as pb;
@@ -8,6 +9,7 @@ import '../../generated/meshtastic/module_config.pb.dart' as module_pb;
 import '../../generated/meshtastic/telemetry.pb.dart' as telemetry_pb;
 import '../../generated/meshtastic/portnums.pbenum.dart';
 import '../../models/mesh_node.dart';
+import '../../models/chat_message.dart';
 import 'radio_transport.dart';
 
 enum RadioStatus { disconnected, connecting, downloading, ready, error }
@@ -15,13 +17,24 @@ enum RadioStatus { disconnected, connecting, downloading, ready, error }
 /// A verified protocol session. Readiness requires matching configuration nonce.
 /// Radio configuration is read-only in this implementation.
 class RadioSession extends ChangeNotifier {
-  RadioSession({DateTime Function()? clock, int Function()? nonce,
+  RadioSession({DateTime Function()? clock, int Function()? nonce, int Function()? packetId,
+    this.ackTimeout = const Duration(seconds: 90),
     this.configTimeout = const Duration(seconds: 60)})
     : _clock = clock ?? DateTime.now,
+      _packetId = packetId ?? (() => Random.secure().nextInt(0x7ffffffe) + 1),
       _nonce = nonce ?? (() => Random.secure().nextInt(0x7ffffffe) + 1);
   final DateTime Function() _clock;
   final int Function() _nonce;
   final Duration configTimeout;
+  final Duration ackTimeout;
+  final int Function() _packetId;
+  final _messages = StreamController<ChatMessage>.broadcast(sync: true);
+  Stream<ChatMessage> get messages => _messages.stream;
+  final Map<int, ChatMessage> _outgoing = {};
+  final Map<int, Timer> _ackTimers = {};
+  final Set<int> _sentIds = {};
+  final List<pb.MeshPacket> _earlyMessages = [];
+  int _receiveSequence = 0;
   RadioStatus status = RadioStatus.disconnected;
   String? error;
   int? localNode;
@@ -131,6 +144,13 @@ class RadioSession extends ChangeNotifier {
       if (frame.hasNodeInfo()) {
         _nodeInfo(frame.nodeInfo);
       }
+      if (frame.hasQueueStatus()) {
+        final queue = frame.queueStatus;
+        if (queue.res != 0) {
+          _updateMessage(queue.meshPacketId, MessageState.failed,
+            'Radio queue rejected the packet (code ${queue.res}).');
+        }
+      }
       if (frame.hasPacket()) {
         _packet(frame.packet);
       }
@@ -143,6 +163,10 @@ class RadioSession extends ChangeNotifier {
         _timeout?.cancel();
         readySince = _clock();
         status = RadioStatus.ready;
+        for (final packet in _earlyMessages) {
+          _messagePacket(packet);
+        }
+        _earlyMessages.clear();
       }
       _notify();
     } catch (_) {
@@ -201,6 +225,14 @@ class RadioSession extends ChangeNotifier {
         _packets.remove(_packets.first);
       }
     }
+    if (packet.hasDecoded() && (packet.decoded.portnum == PortNum.TEXT_MESSAGE_APP ||
+        packet.decoded.portnum == PortNum.ROUTING_APP)) {
+      if (status == RadioStatus.ready) {
+        _messagePacket(packet);
+      } else if (_earlyMessages.length < 100) {
+        _earlyMessages.add(packet);
+      }
+    }
     final old = _nodes[packet.from];
     final heard = _timestamp(packet.rxTime) ?? _clock();
     if (old?.lastHeard != null && heard.isBefore(old!.lastHeard!)) {
@@ -240,6 +272,126 @@ class RadioSession extends ChangeNotifier {
     }
   }
 
+
+  Future<void> sendText(String text, {required int channel,
+      int destination = ChatMessage.broadcast}) async {
+    final transport = _transport;
+    final radio = localNode;
+    if (status != RadioStatus.ready || transport == null || radio == null) {
+      throw StateError('Connect and finish radio configuration before sending.');
+    }
+    final payload = utf8.encode(text.trim());
+    if (payload.isEmpty || payload.length > pb.Constants.DATA_PAYLOAD_LEN.value) {
+      throw ArgumentError('Messages must contain 1–233 UTF-8 bytes.');
+    }
+    final selected = channels[channel];
+    if (selected == null || selected.role == channel_pb.Channel_Role.DISABLED) {
+      throw StateError('Choose an enabled channel downloaded from your radio.');
+    }
+    if (destination <= 0 || destination > ChatMessage.broadcast || destination == radio) {
+      throw ArgumentError('Choose a valid remote destination.');
+    }
+    var id = _packetId();
+    for (var i = 0; _sentIds.contains(id) && i < 10; i++) {
+      id = _packetId();
+    }
+    if (id <= 0 || id > 0xffffffff || !_sentIds.add(id)) {
+      throw StateError('Could not allocate a unique packet ID.');
+    }
+    final message = ChatMessage(key: '$radio:$radio:$id', radio: radio, packetId: id,
+      from: radio, to: destination, channel: channel, text: text.trim(), time: _clock(),
+      outgoing: true, state: MessageState.writing);
+    _outgoing[id] = message;
+    _messages.add(message);
+    final generation = _generation;
+    var hopLimit = 3;
+    final lora = configuration['lora'];
+    if (lora != null && lora.hasLora()) {
+      hopLimit = lora.lora.hopLimit;
+    }
+    final packet = pb.MeshPacket(from: radio, to: destination, channel: channel,
+      id: id, wantAck: true, hopLimit: hopLimit,
+      decoded: pb.Data(portnum: PortNum.TEXT_MESSAGE_APP, payload: payload));
+    _ackTimers[id] = Timer(ackTimeout, () => _updateMessage(id, MessageState.unknown,
+      'No mesh acknowledgement arrived before the timeout.'));
+    try {
+      await transport.write(pb.ToRadio(packet: packet).writeToBuffer());
+      // A synchronous ACK or disconnect must not be downgraded after the write.
+      if (generation == _generation && _outgoing[id]?.state == MessageState.writing) {
+        _updateMessage(id, MessageState.written);
+      }
+    } catch (_) {
+      if (_outgoing[id]?.state == MessageState.writing) {
+        _updateMessage(id, MessageState.unknown,
+          'Bluetooth write failed; delivery could not be confirmed.');
+      }
+      rethrow;
+    }
+  }
+
+  void _updateMessage(int id, MessageState state, [String? reason]) {
+    final message = _outgoing[id];
+    if (message == null || _disposed || message.state == MessageState.acknowledged ||
+        message.state == MessageState.failed) {
+      return;
+    }
+    if (state != MessageState.written) {
+      _ackTimers.remove(id)?.cancel();
+    }
+    final updated = message.withState(state, reason);
+    _outgoing[id] = updated;
+    _messages.add(updated);
+  }
+
+  void _messagePacket(pb.MeshPacket packet) {
+    final radio = localNode;
+    if (radio == null || !packet.hasDecoded()) {
+      return;
+    }
+    final data = packet.decoded;
+    if (data.portnum == PortNum.ROUTING_APP && data.requestId != 0) {
+      final outgoing = _outgoing[data.requestId];
+      if (outgoing == null || packet.to != radio ||
+          (outgoing.isDirect && packet.from != outgoing.to && packet.from != radio)) {
+        return;
+      }
+      final routing = pb.Routing.fromBuffer(data.payload);
+      if (!routing.hasErrorReason()) {
+        return;
+      }
+      _updateMessage(data.requestId,
+        routing.errorReason == pb.Routing_Error.NONE ? MessageState.acknowledged : MessageState.failed,
+        routing.errorReason == pb.Routing_Error.NONE ? null : routing.errorReason.name);
+    } else if (data.portnum == PortNum.TEXT_MESSAGE_APP &&
+        (packet.to == radio || packet.to == ChatMessage.broadcast) && packet.from != radio) {
+      final text = utf8.decode(data.payload, allowMalformed: true);
+      if (text.isEmpty) {
+        return;
+      }
+      final suffix = packet.id == 0 ? 'zero:${_clock().microsecondsSinceEpoch}:${_receiveSequence++}' :
+        packet.id.toString();
+      _messages.add(ChatMessage(key: '$radio:${packet.from}:$suffix',
+        radio: radio, packetId: packet.id, from: packet.from, to: packet.to,
+        channel: packet.channel, text: text, time: _timestamp(packet.rxTime) ?? _clock(),
+        outgoing: false, state: MessageState.received));
+    }
+  }
+
+  void _interruptMessages() {
+    for (final id in _outgoing.keys.toList()) {
+      final state = _outgoing[id]!.state;
+      if (state == MessageState.writing || state == MessageState.written) {
+        _updateMessage(id, MessageState.unknown, 'Radio disconnected before confirmation.');
+      }
+    }
+    for (final timer in _ackTimers.values) {
+      timer.cancel();
+    }
+    _ackTimers.clear();
+    _outgoing.clear();
+    _earlyMessages.clear();
+  }
+
   void _fail(String message) {
     error = message;
     status = RadioStatus.error;
@@ -251,6 +403,7 @@ class RadioSession extends ChangeNotifier {
 
   Future<void> _closeTransport() async {
     ++_generation;
+    _interruptMessages();
     final transport = _transport;
     _transport = null;
     final frames = _frames;
@@ -286,6 +439,7 @@ class RadioSession extends ChangeNotifier {
     _timeout?.cancel();
     unawaited(_closeTransport());
     unawaited(_observations.close());
+    unawaited(_messages.close());
     super.dispose();
   }
 }

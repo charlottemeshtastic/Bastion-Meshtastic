@@ -13,7 +13,8 @@ void main() {
     }
     await tester.tap(find.byIcon(Icons.chat_bubble_outline).last);
     await tester.pumpAndSettle();
-    expect(find.textContaining('protobuf integration'), findsOneWidget);
+    expect(find.text('MESH CHATS'), findsOneWidget);
+    expect(find.text('SEND MESSAGE'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }

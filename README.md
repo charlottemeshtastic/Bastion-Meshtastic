@@ -10,12 +10,14 @@ Independent Android Flutter companion for Meshtastic with Bastion's black/charco
 - Verified node database view with names, last heard, battery/external power, SNR/RSSI,
   hop information when supplied, and positions.
 - Live telemetry and node updates with bounded packet deduplication.
+- Channel and direct text messaging with UTF-8 byte limits and enabled-channel validation.
+- Locally saved chat history scoped by radio; routing acknowledgement/failure and unconfirmed status.
 - Free local automation presets: battery below 20%, new node and 12-hour silence.
 - Locally saved rules and up to 200 live alerts; isolated simulator for use without hardware.
 - Foreground-only monitoring: pauses on Bluetooth disconnect, radio reboot or app background.
 
 **Development build, not a completed release.** BLE hardware validation is pending.
-Channel/direct messaging, maps, system notifications, background monitoring, radio
+Maps, system notifications, background monitoring, radio
 configuration writes and release signing remain outstanding. Do not rely on this
 development build for emergency communications.
 
@@ -67,8 +69,9 @@ Android system notifications and background execution are not implemented.
 - [x] BLE connection, configuration download and verified node view.
 - [x] Live node/telemetry events connected to local rules and saved alert history.
 - [ ] Hardware pairing/reconnect/interoperability QA.
-- [ ] Persistent verified node/message database and telemetry history.
-- [ ] Channel and direct messaging with honest delivery feedback.
+- [x] Bounded local message history (1,000 messages across radios).
+- [ ] Persistent verified node database and telemetry history.
+- [x] Channel and direct messaging with honest delivery feedback.
 - [ ] Android notifications and foreground service for background monitoring.
 - [ ] Map/positions, traceroute and network diagnostics.
 - [ ] Custom thresholds/targets, geofences and opt-in scheduled messages.
@@ -82,3 +85,21 @@ See NOTICE.md and protos/LICENSE for source-distribution requirements.
 FlutterBluePlus 2.1.0 has a separate license: present use is personal/noncommercial;
 review that dependency before commercial distribution. No Socialmesh implementation
 or branding is copied. Bastion is independent and not an official Meshtastic app.
+
+## Messaging
+
+Open CHATS after the radio reaches Ready, choose an enabled channel or a discovered
+remote node, type a message and send. Direct messages use the current primary channel;
+the radio controls encryption. This build does not promise recipient-only encryption.
+
+Chat history is stored locally (up to 1,000 messages), separated by radio node number,
+channel or direct peer, and can be browsed offline. A Bluetooth write is shown as
+**Written to radio**, not delivery. Routing replies produce **Mesh acknowledged**
+or a radio failure. An acknowledgement is not a read receipt or cryptographic
+proof. Disconnects, write interruptions, app restarts and acknowledgement timeouts
+leave unresolved sends **Delivery unconfirmed**. There are no automatic retries or
+offline transmissions. Check history before manually resending.
+
+Text payloads are limited to 233 UTF-8 bytes; emoji can consume multiple bytes.
+Channel reconfiguration may change what a saved channel index refers to. Hardware
+messaging and acknowledgement interoperability testing remains pending.

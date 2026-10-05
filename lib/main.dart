@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'services/meshtastic_ble_discovery.dart';
 import 'screens/automations/automations_page.dart';
 import 'screens/nodes/nodes_page.dart';
+import 'screens/chats/chats_page.dart';
+import 'services/messaging/chat_history.dart';
+import 'models/chat_message.dart';
 import 'screens/settings/radio_info_page.dart';
 import 'services/meshtastic/radio_session.dart';
 import 'services/automations/automation_controller.dart';
@@ -43,6 +46,8 @@ class _BastionShellState extends State<BastionShell> with WidgetsBindingObserver
   final ble = MeshtasticBleDiscovery();
   final session = RadioSession();
   final automations = AutomationController();
+  final chatHistory = ChatHistory();
+  StreamSubscription<ChatMessage>? _chatEvents;
   StreamSubscription<dynamic>? _observations;
   Timer? _tick;
   bool _wasReady = false;
@@ -52,6 +57,8 @@ class _BastionShellState extends State<BastionShell> with WidgetsBindingObserver
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(automations.load());
+    _chatEvents = session.messages.listen(chatHistory.upsert);
+    unawaited(chatHistory.load());
     session.addListener(_sessionChanged);
     _observations = session.observations.listen(automations.observe);
     _tick = Timer.periodic(const Duration(minutes: 1), (_) {
@@ -92,6 +99,8 @@ class _BastionShellState extends State<BastionShell> with WidgetsBindingObserver
     WidgetsBinding.instance.removeObserver(this);
     _tick?.cancel();
     unawaited(_observations?.cancel());
+    unawaited(_chatEvents?.cancel());
+    chatHistory.dispose();
     session.removeListener(_sessionChanged);
     session.dispose();
     automations.dispose();
@@ -118,11 +127,7 @@ class _BastionShellState extends State<BastionShell> with WidgetsBindingObserver
     body: SafeArea(
       child: IndexedStack(index: index, children: [
         NodesPage(discovery: ble, session: session),
-        const _FeaturePage(
-          icon: Icons.chat_bubble_outline,
-          title: 'CHATS',
-          detail: 'Direct messages and channel messaging will be enabled after Meshtastic transport and protobuf integration.',
-        ),
+        ChatsPage(session: session, history: chatHistory),
         const _FeaturePage(
           icon: Icons.map_outlined,
           title: 'MESH MAP',
