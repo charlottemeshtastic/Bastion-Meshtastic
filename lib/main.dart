@@ -9,6 +9,8 @@ import 'models/chat_message.dart';
 import 'screens/settings/radio_info_page.dart';
 import 'services/meshtastic/radio_session.dart';
 import 'services/automations/automation_controller.dart';
+import 'services/automations/automation_engine.dart';
+import 'services/alert_notifications.dart';
 import 'services/node_archive.dart';
 import 'models/telemetry_sample.dart';
 import 'screens/map/mesh_map_page.dart';
@@ -53,6 +55,8 @@ class _BastionShellState extends State<BastionShell>
   final automations = AutomationController();
   final chatHistory = ChatHistory();
   final nodeArchive = NodeArchive();
+  late final AlertNotifications notifications;
+  StreamSubscription<AutomationAlert>? _liveAlerts;
   StreamSubscription<TelemetrySample>? _telemetry;
   StreamSubscription<ChatMessage>? _chatEvents;
   StreamSubscription<dynamic>? _observations;
@@ -63,14 +67,28 @@ class _BastionShellState extends State<BastionShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    notifications = AlertNotifications(
+      onOpen: () {
+        if (mounted) {
+          setState(() => index = 4);
+        }
+      },
+    );
+    unawaited(notifications.load());
+    _liveAlerts = automations.liveAlerts.listen((alert) {
+      unawaited(notifications.showAlert(alert));
+    });
     unawaited(automations.load());
     _chatEvents = session.messages.listen(chatHistory.upsert);
     unawaited(chatHistory.load());
     unawaited(nodeArchive.load());
-    _telemetry = session.telemetry.listen(nodeArchive.record);
+    _telemetry = session.telemetry.listen((sample) {
+      nodeArchive.record(sample);
+      automations.observeTelemetry(sample);
+    });
     session.addListener(_sessionChanged);
     _observations = session.observations.listen((node) {
-      automations.observe(node);
+      automations.observe(node, batteryFresh: false);
       final radio = session.localNode;
       if (radio != null) {
         nodeArchive.observe(radio, node);
@@ -84,7 +102,7 @@ class _BastionShellState extends State<BastionShell>
   void _sessionChanged() {
     final ready = session.status == RadioStatus.ready;
     if (ready && !_wasReady) {
-      automations.seed(session.nodes);
+      automations.seed(session.nodes, radioId: session.localNode);
       nodeArchive.seed(session.localNode!, session.nodes);
     }
     _wasReady = ready;
@@ -119,6 +137,8 @@ class _BastionShellState extends State<BastionShell>
     unawaited(_observations?.cancel());
     unawaited(_chatEvents?.cancel());
     unawaited(_telemetry?.cancel());
+    unawaited(_liveAlerts?.cancel());
+    notifications.dispose();
     nodeArchive.dispose();
     chatHistory.dispose();
     session.removeListener(_sessionChanged);
@@ -161,7 +181,12 @@ class _BastionShellState extends State<BastionShell>
             active: index == 2,
           ),
           FieldDashboardPage(session: session, archive: nodeArchive),
-          AutomationsPage(controller: automations, session: session),
+          AutomationsPage(
+            controller: automations,
+            session: session,
+            archive: nodeArchive,
+            notifications: notifications,
+          ),
           RadioInfoPage(session: session),
         ],
       ),

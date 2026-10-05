@@ -1,7 +1,7 @@
 name: bastion_meshtastic
 description: Independent Bastion companion for Meshtastic; Android field companion with messaging, local automations and node history.
 publish_to: none
-version: 0.2.0+2
+version: 0.3.0+3
 
 environment:
   sdk: '>=3.9.0 <4.0.0'
@@ -15,6 +15,7 @@ dependencies:
   fixnum: ^1.1.1
   flutter_map: 8.2.2
   latlong2: ^0.9.1
+  flutter_local_notifications: 21.0.0
 
 dev_dependencies:
   flutter_test:
