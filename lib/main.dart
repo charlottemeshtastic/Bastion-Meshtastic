@@ -9,6 +9,10 @@ import 'models/chat_message.dart';
 import 'screens/settings/radio_info_page.dart';
 import 'services/meshtastic/radio_session.dart';
 import 'services/automations/automation_controller.dart';
+import 'services/node_archive.dart';
+import 'models/telemetry_sample.dart';
+import 'screens/map/mesh_map_page.dart';
+import 'screens/tools/field_dashboard_page.dart';
 
 void main() => runApp(const BastionMeshtasticApp());
 
@@ -41,12 +45,15 @@ class BastionShell extends StatefulWidget {
   State<BastionShell> createState() => _BastionShellState();
 }
 
-class _BastionShellState extends State<BastionShell> with WidgetsBindingObserver {
+class _BastionShellState extends State<BastionShell>
+    with WidgetsBindingObserver {
   int index = 0;
   final ble = MeshtasticBleDiscovery();
   final session = RadioSession();
   final automations = AutomationController();
   final chatHistory = ChatHistory();
+  final nodeArchive = NodeArchive();
+  StreamSubscription<TelemetrySample>? _telemetry;
   StreamSubscription<ChatMessage>? _chatEvents;
   StreamSubscription<dynamic>? _observations;
   Timer? _tick;
@@ -59,8 +66,16 @@ class _BastionShellState extends State<BastionShell> with WidgetsBindingObserver
     unawaited(automations.load());
     _chatEvents = session.messages.listen(chatHistory.upsert);
     unawaited(chatHistory.load());
+    unawaited(nodeArchive.load());
+    _telemetry = session.telemetry.listen(nodeArchive.record);
     session.addListener(_sessionChanged);
-    _observations = session.observations.listen(automations.observe);
+    _observations = session.observations.listen((node) {
+      automations.observe(node);
+      final radio = session.localNode;
+      if (radio != null) {
+        nodeArchive.observe(radio, node);
+      }
+    });
     _tick = Timer.periodic(const Duration(minutes: 1), (_) {
       automations.tick(DateTime.now(), readySince: session.readySince);
     });
@@ -70,13 +85,15 @@ class _BastionShellState extends State<BastionShell> with WidgetsBindingObserver
     final ready = session.status == RadioStatus.ready;
     if (ready && !_wasReady) {
       automations.seed(session.nodes);
+      nodeArchive.seed(session.localNode!, session.nodes);
     }
     _wasReady = ready;
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached ||
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
       unawaited(session.disconnect());
       if (ble.scanning) {
@@ -84,6 +101,7 @@ class _BastionShellState extends State<BastionShell> with WidgetsBindingObserver
       }
     }
   }
+
   static const labels = ['NODES', 'CHATS', 'MAP', 'TOOLS', 'AUTO', 'SETTINGS'];
   static const icons = [
     Icons.hub_outlined,
@@ -100,6 +118,8 @@ class _BastionShellState extends State<BastionShell> with WidgetsBindingObserver
     _tick?.cancel();
     unawaited(_observations?.cancel());
     unawaited(_chatEvents?.cancel());
+    unawaited(_telemetry?.cancel());
+    nodeArchive.dispose();
     chatHistory.dispose();
     session.removeListener(_sessionChanged);
     session.dispose();
@@ -114,33 +134,37 @@ class _BastionShellState extends State<BastionShell> with WidgetsBindingObserver
       title: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('BASTION',
-              style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  color: BastionMeshtasticApp.cyan,
-                  letterSpacing: 2)),
-          Text('MESHTASTIC EDITION',
-              style: TextStyle(fontSize: 10, letterSpacing: 1.4)),
+          Text(
+            'BASTION',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              color: BastionMeshtasticApp.cyan,
+              letterSpacing: 2,
+            ),
+          ),
+          Text(
+            'MESHTASTIC EDITION',
+            style: TextStyle(fontSize: 10, letterSpacing: 1.4),
+          ),
         ],
       ),
     ),
     body: SafeArea(
-      child: IndexedStack(index: index, children: [
-        NodesPage(discovery: ble, session: session),
-        ChatsPage(session: session, history: chatHistory),
-        const _FeaturePage(
-          icon: Icons.map_outlined,
-          title: 'MESH MAP',
-          detail: 'Verified mesh node positions, telemetry and offline maps are next. BLE scan results are not mesh nodes.',
-        ),
-        const _FeaturePage(
-          icon: Icons.build_outlined,
-          title: 'FIELD TOOLS',
-          detail: 'Device configuration, traceroute, diagnostics, telemetry and coverage capture are planned.',
-        ),
-        AutomationsPage(controller: automations, session: session),
-        RadioInfoPage(session: session),
-      ]),
+      child: IndexedStack(
+        index: index,
+        children: [
+          NodesPage(discovery: ble, session: session, archive: nodeArchive),
+          ChatsPage(session: session, history: chatHistory),
+          MeshMapPage(
+            session: session,
+            archive: nodeArchive,
+            active: index == 2,
+          ),
+          FieldDashboardPage(session: session, archive: nodeArchive),
+          AutomationsPage(controller: automations, session: session),
+          RadioInfoPage(session: session),
+        ],
+      ),
     ),
     bottomNavigationBar: NavigationBar(
       selectedIndex: index,
@@ -150,60 +174,5 @@ class _BastionShellState extends State<BastionShell> with WidgetsBindingObserver
           NavigationDestination(icon: Icon(icons[i]), label: labels[i]),
       ],
     ),
-  );
-}
-
-class _Header extends StatelessWidget {
-  const _Header({required this.title, required this.detail});
-  final String title;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: const Color(0xFF12171C),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(
-        color: BastionMeshtasticApp.cyan.withValues(alpha: 0.5),
-      ),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: BastionMeshtasticApp.cyan,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(detail, style: const TextStyle(height: 1.5)),
-      ],
-    ),
-  );
-}
-
-class _FeaturePage extends StatelessWidget {
-  const _FeaturePage({
-    required this.icon,
-    required this.title,
-    required this.detail,
-  });
-  final IconData icon;
-  final String title;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(18),
-    children: [
-      const SizedBox(height: 20),
-      Icon(icon, size: 48, color: BastionMeshtasticApp.cyan),
-      const SizedBox(height: 16),
-      _Header(title: title, detail: detail),
-    ],
   );
 }

@@ -15,9 +15,12 @@ Independent Android Flutter companion for Meshtastic with Bastion's black/charco
 - Free local automation presets: battery below 20%, new node and 12-hour silence.
 - Locally saved rules and up to 200 live alerts; isolated simulator for use without hardware.
 - Foreground-only monitoring: pauses on Bluetooth disconnect, radio reboot or app background.
+- Node map with tappable saved positions, distance/bearing measurements and optional online street tiles.
+- Local node archive and received telemetry history, separated by radio identity.
+- Field dashboard with search, low-battery filtering, node details and battery/SNR observation charts.
 
 **Development build, not a completed release.** BLE hardware validation is pending.
-Maps, system notifications, background monitoring, radio
+Downloadable offline street maps, system notifications, background monitoring, radio
 configuration writes and release signing remain outstanding. Do not rely on this
 development build for emergency communications.
 
@@ -70,10 +73,11 @@ Android system notifications and background execution are not implemented.
 - [x] Live node/telemetry events connected to local rules and saved alert history.
 - [ ] Hardware pairing/reconnect/interoperability QA.
 - [x] Bounded local message history (1,000 messages across radios).
-- [ ] Persistent verified node database and telemetry history.
+- [x] Persistent verified node database and received telemetry history.
 - [x] Channel and direct messaging with honest delivery feedback.
 - [ ] Android notifications and foreground service for background monitoring.
-- [ ] Map/positions, traceroute and network diagnostics.
+- [x] Node positions, interactive map and geometric distance/bearing.
+- [ ] Downloadable offline basemaps, traceroute and network diagnostics.
 - [ ] Custom thresholds/targets, geofences and opt-in scheduled messages.
 - [ ] Field coverage sessions and repeater dashboard.
 - [ ] Release signing, privacy/license review and transport expansion.
@@ -103,3 +107,27 @@ offline transmissions. Check history before manually resending.
 Text payloads are limited to 233 UTF-8 bytes; emoji can consume multiple bytes.
 Channel reconfiguration may change what a saved channel index refers to. Hardware
 messaging and acknowledgement interoperability testing remains pending.
+
+## Map and field history
+
+MAP starts with saved position markers on a plain background and makes no tile
+requests until **Online street map** is enabled. The online layer requests visible
+areas from OpenStreetMap, with attribution, an app-specific user agent and the map
+library's normal HTTP tile cache. It only runs while MAP is the active tab.
+It does not download regions or guarantee offline street tiles. Cached node markers
+and distance calculations work without internet. Distance/bearing is great-circle
+geometry; it is not a terrain, line-of-sight, radio connectivity or coverage estimate.
+Zero/zero, invalid and incomplete position reports cannot replace known positions.
+
+TOOLS is the field dashboard. Tap a saved node for its details and received battery,
+voltage, SNR/RSSI, channel utilization and transmit airtime values. Charts display
+individual observations at their actual reception times, without interpolating
+silent periods or filling in missing telemetry from cached values. Position timestamps
+and last-heard times are shown separately. A last-known position can be stale, fixed
+or imprecise, and battery summaries do not prove current reachability.
+
+Phone-local storage retains up to 2,000 nodes and 4,000 readings across radios;
+readings older than 30 days are removed. Clear a selected radio's node archive in
+TOOLS; chats and automation history are separate. No node coordinates or telemetry
+are uploaded by the archive. Enabling street tiles reveals the viewed map area to
+OpenStreetMap's tile service. Reinstalling or clearing app data removes local history.
