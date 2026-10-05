@@ -41,12 +41,18 @@ class RadioSession extends ChangeNotifier {
   int _generation = 0;
   int _configId = 0;
   bool _disposed = false;
+  bool _opening = false;
   final Set<String> _packets = {};
   int malformedFrames = 0;
 
   Future<void> connect(RadioTransport transport) async {
+    if (_opening || _disposed) {
+      return;
+    }
+    _opening = true;
     await disconnect();
     if (_disposed) {
+      _opening = false;
       return;
     }
     final generation = ++_generation;
@@ -92,6 +98,8 @@ class RadioSession extends ChangeNotifier {
       if (generation == _generation && !_disposed) {
         _fail('Connection failed: ${e.toString()}');
       }
+    } finally {
+      _opening = false;
     }
   }
 

@@ -13,12 +13,14 @@ class FakeTransport implements RadioTransport {
   final writes = <List<int>>[];
   bool closed = false;
   bool failOpen = false;
+  Completer<void>? openGate;
   @override
   Stream<List<int>> get frames => input.stream;
   @override
   Stream<void> get disconnections => lost.stream;
   @override
   Future<void> open() async {
+    await openGate?.future;
     if (failOpen) {
       throw StateError('Pairing rejected');
     }
@@ -135,6 +137,18 @@ void main() {
     expect(session.status, RadioStatus.error);
     expect(session.error, contains('Pairing rejected'));
     expect(transport.closed, isTrue);
+  });
+
+  test('cancelling during connect cannot start a late protocol session', () async {
+    transport.openGate = Completer<void>();
+    final pending = session.connect(transport);
+    await Future<void>.delayed(Duration.zero);
+    await session.disconnect();
+    transport.openGate!.complete();
+    await pending;
+    expect(session.status, RadioStatus.disconnected);
+    expect(transport.closed, isTrue);
+    expect(transport.writes, isEmpty);
   });
 
   test('a configuration completion without identity cannot become ready', () async {

@@ -40,6 +40,10 @@ class MeshtasticBleDiscovery extends ChangeNotifier {
       }
       await _subscription?.cancel();
       await _scanState?.cancel();
+      if (_disposed || generation != _generation) {
+        return;
+      }
+      var scanStarted = false;
       _subscription = FlutterBluePlus.onScanResults.listen((batch) {
         if (_disposed || generation != _generation) {
           return;
@@ -55,7 +59,7 @@ class MeshtasticBleDiscovery extends ChangeNotifier {
         _notify();
       });
       _scanState = FlutterBluePlus.isScanning.listen((value) {
-        if (!_disposed && generation == _generation && !value &&
+        if (!_disposed && generation == _generation && scanStarted && !value &&
             FlutterBluePlus.isScanningNow == false) {
           _scanning = false;
           _notify();
@@ -63,6 +67,11 @@ class MeshtasticBleDiscovery extends ChangeNotifier {
       });
       await FlutterBluePlus.startScan(withServices: [Guid(meshtasticServiceUuid)],
         timeout: const Duration(seconds: 10));
+      scanStarted = true;
+      if (_disposed || generation != _generation) {
+        await FlutterBluePlus.stopScan();
+        return;
+      }
       if (!_disposed && generation == _generation) {
         _scanning = FlutterBluePlus.isScanningNow;
         _notify();

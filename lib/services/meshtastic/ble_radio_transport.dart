@@ -47,6 +47,9 @@ class BleRadioTransport implements RadioTransport {
       throw StateError('Connection was cancelled.');
     }
     final services = await device.discoverServices();
+    if (_closed) {
+      throw StateError('Connection was cancelled.');
+    }
     final matching = services.where((s) => s.uuid == Guid(meshtasticServiceUuid));
     if (matching.isEmpty) {
       throw StateError('This Bluetooth device does not expose the Meshtastic service.');
