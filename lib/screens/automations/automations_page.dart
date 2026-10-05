@@ -31,9 +31,11 @@ class _AutomationsPageState extends State<AutomationsPage> {
         setState(() { _rules = rules; _loading = false; });
       }
     } catch (_) {
-      if (mounted) setState(() {
-        _loading = false; _error = 'Could not load saved rules. Restart before changing rules.';
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false; _error = 'Could not load saved rules. Restart before changing rules.';
+        });
+      }
     }
   }
 
