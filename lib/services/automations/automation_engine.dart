@@ -41,6 +41,13 @@ class AutomationEngine {
   final Map<String, NodeObservation> _nodes = {};
   final Set<String> _active = {};
 
+  void seed(NodeObservation node) {
+    final old = _nodes[node.id];
+    if (old == null || node.lastHeard.isAfter(old.lastHeard)) {
+      _nodes[node.id] = node;
+    }
+  }
+
   List<AutomationAlert> observe(NodeObservation node,
       List<AutomationRule> rules, DateTime now) {
     // Ignore old/replayed observations instead of regressing node state.
@@ -60,9 +67,9 @@ class AutomationEngine {
           _evaluate(key, battery < rule.threshold, rule, node,
             '${node.id} battery below ${rule.threshold.toInt()}% (${battery.toInt()}%)', now, alerts);
         }
-      } else if (rule.trigger == RuleTrigger.nodeSilent) {
-        _evaluate(key, now.difference(node.lastHeard).inSeconds >= rule.threshold * 3600,
-          rule, node, '${node.id} has not been heard for ${rule.threshold} hours', now, alerts);
+      } else if (rule.trigger == RuleTrigger.nodeSilent &&
+          now.difference(node.lastHeard).inSeconds < rule.threshold * 3600) {
+        _active.remove(key);
       }
     }
     return alerts;
@@ -76,7 +83,7 @@ class AutomationEngine {
     final alerts = <AutomationAlert>[];
     for (final rule in rules.where((r) => r.trigger == RuleTrigger.nodeSilent)) {
       for (final node in _nodes.values) {
-        if (!_matches(rule, node.id)) continue;
+        if (!_matches(rule, node.id) || node.lastHeard.millisecondsSinceEpoch <= 0) continue;
         _evaluate('${rule.id}:${node.id}',
           now.difference(node.lastHeard).inSeconds >= rule.threshold * 3600,
           rule, node, '${node.id} has not been heard for ${rule.threshold} hours', now, alerts);

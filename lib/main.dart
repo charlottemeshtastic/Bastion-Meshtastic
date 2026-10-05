@@ -1,6 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'services/meshtastic_ble_discovery.dart';
 import 'screens/automations/automations_page.dart';
+import 'screens/nodes/nodes_page.dart';
+import 'screens/settings/radio_info_page.dart';
+import 'services/meshtastic/radio_session.dart';
+import 'services/automations/automation_controller.dart';
 
 void main() => runApp(const BastionMeshtasticApp());
 
@@ -33,9 +38,45 @@ class BastionShell extends StatefulWidget {
   State<BastionShell> createState() => _BastionShellState();
 }
 
-class _BastionShellState extends State<BastionShell> {
+class _BastionShellState extends State<BastionShell> with WidgetsBindingObserver {
   int index = 0;
   final ble = MeshtasticBleDiscovery();
+  final session = RadioSession();
+  final automations = AutomationController();
+  StreamSubscription<dynamic>? _observations;
+  Timer? _tick;
+  bool _wasReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(automations.load());
+    session.addListener(_sessionChanged);
+    _observations = session.observations.listen(automations.observe);
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
+      automations.tick(DateTime.now(), readySince: session.readySince);
+    });
+  }
+
+  void _sessionChanged() {
+    final ready = session.status == RadioStatus.ready;
+    if (ready && !_wasReady) {
+      automations.seed(session.nodes);
+    }
+    _wasReady = ready;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      unawaited(session.disconnect());
+      if (ble.scanning) {
+        unawaited(ble.stop());
+      }
+    }
+  }
   static const labels = ['NODES', 'CHATS', 'MAP', 'TOOLS', 'AUTO', 'SETTINGS'];
   static const icons = [
     Icons.hub_outlined,
@@ -48,6 +89,12 @@ class _BastionShellState extends State<BastionShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _tick?.cancel();
+    unawaited(_observations?.cancel());
+    session.removeListener(_sessionChanged);
+    session.dispose();
+    automations.dispose();
     ble.dispose();
     super.dispose();
   }
@@ -70,7 +117,7 @@ class _BastionShellState extends State<BastionShell> {
     ),
     body: SafeArea(
       child: IndexedStack(index: index, children: [
-        _NodesPage(discovery: ble),
+        NodesPage(discovery: ble, session: session),
         const _FeaturePage(
           icon: Icons.chat_bubble_outline,
           title: 'CHATS',
@@ -86,12 +133,8 @@ class _BastionShellState extends State<BastionShell> {
           title: 'FIELD TOOLS',
           detail: 'Device configuration, traceroute, diagnostics, telemetry and coverage capture are planned.',
         ),
-        const AutomationsPage(),
-        const _FeaturePage(
-          icon: Icons.settings_outlined,
-          title: 'SETTINGS',
-          detail: 'Connection preferences, channel configuration, privacy and app information will be added here.',
-        ),
+        AutomationsPage(controller: automations, session: session),
+        RadioInfoPage(session: session),
       ]),
     ),
     bottomNavigationBar: NavigationBar(
@@ -100,74 +143,6 @@ class _BastionShellState extends State<BastionShell> {
       destinations: [
         for (var i = 0; i < labels.length; i++)
           NavigationDestination(icon: Icon(icons[i]), label: labels[i]),
-      ],
-    ),
-  );
-}
-
-class _NodesPage extends StatelessWidget {
-  const _NodesPage({required this.discovery});
-  final MeshtasticBleDiscovery discovery;
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: discovery,
-    builder: (context, _) => ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        const _Header(
-          title: 'RADIO DISCOVERY',
-          detail: 'Scan for nearby Bluetooth LE devices. Meshtastic identity and protocol connection are not implemented yet.',
-        ),
-        const SizedBox(height: 18),
-        FilledButton.icon(
-          onPressed: discovery.scanning ? null : discovery.scan,
-          icon: Icon(discovery.scanning
-              ? Icons.hourglass_top
-              : Icons.bluetooth_searching),
-          label: Text(discovery.scanning
-              ? 'SCANNING…'
-              : 'SCAN NEARBY DEVICES'),
-        ),
-        if (discovery.scanning)
-          TextButton(
-            onPressed: discovery.stop,
-            child: const Text('STOP SCAN'),
-          ),
-        if (discovery.error != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Text(
-              discovery.error!,
-              style: const TextStyle(color: Colors.orangeAccent),
-            ),
-          ),
-        const SizedBox(height: 16),
-        if (discovery.results.isEmpty)
-          const Text(
-            'No BLE devices discovered yet.',
-            style: TextStyle(color: Colors.white70),
-          )
-        else
-          for (final item in discovery.results)
-            Card(
-              child: ListTile(
-                leading: const Icon(
-                  Icons.bluetooth,
-                  color: BastionMeshtasticApp.cyan,
-                ),
-                title: Text(item.advertisementData.advName.isNotEmpty
-                    ? item.advertisementData.advName
-                    : 'Unnamed BLE device'),
-                subtitle: Text(item.device.remoteId.str),
-                trailing: Text('${item.rssi} dBm'),
-              ),
-            ),
-        const SizedBox(height: 16),
-        const Text(
-          'Discovery only. Do not use this build for emergency communication.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
       ],
     ),
   );

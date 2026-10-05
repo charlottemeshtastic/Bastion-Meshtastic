@@ -9,3 +9,6 @@ coverage/
 key.properties
 *.env
 .DS_Store
+
+# Generated from pinned vendored protocol definitions
+lib/generated/

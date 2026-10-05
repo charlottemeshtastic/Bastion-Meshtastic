@@ -18,6 +18,7 @@ jobs:
         with:
           flutter-version: '3.41.5'
           channel: stable
+          cache: true
       - name: Generate Android platform
         run: |
           flutter create --platforms=android --org app.bastion --project-name bastion_meshtastic .
@@ -29,6 +30,11 @@ jobs:
         run: |
           flutter pub get
           dart run flutter_launcher_icons
+      - name: Generate protocol bindings
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          python3 scripts/generate_protos.py
       - name: Analyze and test
         run: |
           flutter analyze

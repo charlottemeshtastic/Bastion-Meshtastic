@@ -14,5 +14,6 @@ void main() {
     await tester.tap(find.byIcon(Icons.chat_bubble_outline).last);
     await tester.pumpAndSettle();
     expect(find.textContaining('protobuf integration'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
   });
 }

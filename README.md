@@ -1,61 +1,84 @@
 # Bastion — Meshtastic Edition
 
-Independent Android Flutter companion for Meshtastic, using Bastion's black/charcoal/cyan visual identity and NODES / CHATS / MAP / TOOLS / SETTINGS navigation.
+Independent Android Flutter companion for Meshtastic with Bastion's black/charcoal/cyan identity.
 
-**Development status: early scaffold.** BLE discovery and the UI shell are the initial scope. BLE discovery does not establish a Meshtastic protocol session. Messaging, actual node data, maps, radio configuration, signing, and device QA are not yet implemented. Do not rely on this scaffold for emergency communications.
+## Implemented in this development branch
 
-## Local setup
+- Filtered Meshtastic BLE discovery, GATT validation and manual radio connection.
+- ToRadio/FromRadio protobuf session with configuration nonce validation and timeout.
+- Read-only configuration/channel/module download and firmware/local-node information.
+- Verified node database view with names, last heard, battery/external power, SNR/RSSI,
+  hop information when supplied, and positions.
+- Live telemetry and node updates with bounded packet deduplication.
+- Free local automation presets: battery below 20%, new node and 12-hour silence.
+- Locally saved rules and up to 200 live alerts; isolated simulator for use without hardware.
+- Foreground-only monitoring: pauses on Bluetooth disconnect, radio reboot or app background.
 
-Requires Flutter 3.41.5, Java 17 and an Android SDK.
+**Development build, not a completed release.** BLE hardware validation is pending.
+Channel/direct messaging, maps, system notifications, background monitoring, radio
+configuration writes and release signing remain outstanding. Do not rely on this
+development build for emergency communications.
+
+## Build
+
+Requires Flutter 3.41.5, Java 17, Android SDK, Python 3 and protoc.
+On Ubuntu install protoc with `sudo apt-get install protobuf-compiler`.
 
 ```sh
 flutter create --platforms=android --org app.bastion --project-name bastion_meshtastic .
+rm -f test/widget_test.dart
 python3 scripts/prepare_android.py
 flutter pub get
+python3 scripts/generate_protos.py
 dart run flutter_launcher_icons
 flutter analyze
 flutter test
-flutter run
+flutter build apk --release --target-platform android-arm64
 ```
 
-Android application ID: `app.bastion.bastion_meshtastic` (separate from MeshCore Bastion). The approved Bastion icon belongs at `branding/bastion-icon.png`.
+Protocol source is vendored at a pinned upstream revision in protos/UPSTREAM.md.
+The generator uses protoc_plugin 25.0.0 and protobuf 6.0.0. Generated Dart files
+are reproducible build outputs. CI performs the same generation and validation.
 
-## Milestones
+Android app ID: `app.bastion.bastion_meshtastic`.
+Use a separate Meshtastic edition signing key; do not reuse the MeshCore key.
+The CI APK is a development artifact and does not establish production signing.
 
-1. Foundation: repository, shell, approved branding, BLE discovery and CI.
-2. Protocol: Meshtastic ToRadio/FromRadio protobufs, BLE radio connection, configuration download and node database.
-3. Messaging: direct messages, channels, delivery status, history and notifications.
-4. Field intelligence: live nodes, GPS/map, telemetry, traceroute, offline maps and coverage sessions.
-5. Device tools: supported USB/TCP transports, settings, diagnostics and optional MQTT.
-6. Release: full tests, hardware QA, privacy/license review and a **separate** Meshtastic edition release-signing key.
+## Try a radio
 
-Meshtastic's official Android app and protobuf definitions are GPL-3.0 licensed. Preserve applicable licenses and source-distribution obligations before integrating those components. Bastion Meshtastic is independent and not an official Meshtastic app.
+1. Enable Bluetooth on the radio and phone.
+2. Open NODES, scan, and select a radio. Accept the Android pairing request.
+3. Wait for **Ready · verified Meshtastic session**. Only a matching completed
+   configuration download marks the session ready.
+4. Inspect verified nodes, and open SETTINGS for read-only radio information.
+5. Add an AUTO rule. Live telemetry creates in-app alerts and saved history.
 
-Do **not** use the MeshCore Bastion release keystore for this app.
+Downloaded node history seeds the automation engine silently, so reconnecting
+does not label the entire database as newly discovered. Unknown timestamps and
+battery readings remain unknown. Powered radios do not trigger low-battery
+alerts. Silence alerts require continuously connected foreground monitoring for
+the configured duration; phone disconnection is not a repeater outage.
+Android system notifications and background execution are not implemented.
 
-## Local automations preview
+## Focused roadmap
 
-The AUTO tab supports locally saved battery-below-20%, new-node and
-12-hour-silence alert presets. Add, disable or remove rules, then use
-**TEST WITH SIMULATED DATA** to preview alerts without radio hardware.
-Rules persist locally; simulated alerts are temporary and isolated.
-
-This first pass does not connect rules to BLE data, deliver Android system
-notifications, or run in the background. Silence checks in the engine require
-an active synchronized monitoring session. Repeated alerts are suppressed until
-a condition recovers. No paid API or server is used.
-
-## Focused development order
-
-- [x] Local rules engine, saved presets and explicit simulator.
-- [ ] Protocol: pinned official protobuf definitions, BLE GATT session,
-  configuration completion and verified node repository.
-- [ ] Connect node and telemetry events to local rules; persist alert history.
-- [ ] Android notification permission and foreground monitoring lifecycle.
-- [ ] Channel and direct messaging with delivery feedback and local history.
-- [ ] Positions/map, telemetry charts, traceroute and topology inspection.
+- [x] Saved local rules and isolated simulation.
+- [x] Pinned official protocol definitions and testable session.
+- [x] BLE connection, configuration download and verified node view.
+- [x] Live node/telemetry events connected to local rules and saved alert history.
+- [ ] Hardware pairing/reconnect/interoperability QA.
+- [ ] Persistent verified node/message database and telemetry history.
+- [ ] Channel and direct messaging with honest delivery feedback.
+- [ ] Android notifications and foreground service for background monitoring.
+- [ ] Map/positions, traceroute and network diagnostics.
 - [ ] Custom thresholds/targets, geofences and opt-in scheduled messages.
-- [ ] Hardware QA, signed release and supported transport expansion.
+- [ ] Field coverage sessions and repeater dashboard.
+- [ ] Release signing, privacy/license review and transport expansion.
 
-Background monitoring requires Android lifecycle work and device testing;
-scheduled transmissions must respect radio connectivity and mesh airtime.
+## Licenses
+
+The vendored Meshtastic definitions and generated bindings are GPL-3.0-only.
+See NOTICE.md and protos/LICENSE for source-distribution requirements.
+FlutterBluePlus 2.1.0 has a separate license: present use is personal/noncommercial;
+review that dependency before commercial distribution. No Socialmesh implementation
+or branding is copied. Bastion is independent and not an official Meshtastic app.
