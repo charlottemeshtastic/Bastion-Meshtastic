@@ -27,7 +27,9 @@ class _AutomationsPageState extends State<AutomationsPage> {
       final rules = saved == null ? <AutomationRule>[] :
         (jsonDecode(saved) as List).map((item) =>
           AutomationRule.fromJson(Map<String, dynamic>.from(item as Map))).toList();
-      if (mounted) setState(() { _rules = rules; _loading = false; });
+      if (mounted) {
+        setState(() { _rules = rules; _loading = false; });
+      }
     } catch (_) {
       if (mounted) setState(() {
         _loading = false; _error = 'Could not load saved rules. Restart before changing rules.';
@@ -42,11 +44,17 @@ class _AutomationsPageState extends State<AutomationsPage> {
       if (!await prefs.setString(_storageKey, jsonEncode(rules.map((r) => r.toJson()).toList()))) {
         throw StateError('Save failed');
       }
-      if (mounted) setState(() => _rules = rules);
+      if (mounted) {
+        setState(() => _rules = rules);
+      }
     } catch (_) {
-      if (mounted) setState(() => _error = 'Rules could not be saved. Please try again.');
+      if (mounted) {
+        setState(() => _error = 'Rules could not be saved. Please try again.');
+      }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -80,8 +88,10 @@ class _AutomationsPageState extends State<AutomationsPage> {
     events.addAll(engine.tick(_rules, now.add(const Duration(hours: 13)),
       monitoringConnected: true));
     setState(() { _alerts.clear(); _alerts.addAll(events); });
-    if (events.isEmpty) ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No enabled rules matched the demonstration.')));
+    if (events.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No enabled rules matched the demonstration.')));
+    }
   }
 
   @override
