@@ -32,5 +32,5 @@ flutter_launcher_icons:
   android: true
   ios: false
   image_path: branding/bastion-icon.png
-  adaptive_icon_background: '#0B0E11'
+  adaptive_icon_background: '#20282B'
   adaptive_icon_foreground: branding/bastion-icon.png
