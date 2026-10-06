@@ -1,8 +1,13 @@
 # Bastion
 
-Independent Android Flutter companion for Meshtastic® devices with a charcoal, muted sage and warm off-white theme.
+Independent Android Flutter companion for Meshtastic® devices, developed by **BackCountrySignal**, with a charcoal, muted sage and warm off-white theme.
 
-## Implemented in this development branch
+**Website:** https://backcountrysignal.org/
+**Repository:** https://github.com/backcountrysignal/Bastion-Meshtastic
+
+Bastion brings radio connections, mesh messaging, node information, mapping and local field automations into one Android app. It remains a development build pending physical-radio QA and production signing.
+
+## Implemented features
 
 - Filtered Meshtastic BLE discovery, GATT validation and manual radio connection.
 - ToRadio/FromRadio protobuf session with configuration nonce validation and timeout.
@@ -274,3 +279,20 @@ No warranty is provided - use at your own risk.
 Project: https://meshtastic.org
 Software licenses: https://github.com/meshtastic
 Trademark guidance: https://meshtastic.org/docs/legal/licensing-and-trademark/
+
+## Interface and project goals
+
+- **NODES:** Bluetooth discovery, verified radio sessions and live node information.
+- **CHATS:** Channel and direct messages, saved history and send status.
+- **MAP:** Node positions, optional online street tiles and imported offline map packs.
+- **TOOLS:** Field dashboard, telemetry observations and receiver measurement capture.
+- **AUTO:** Editable local alert rules and optional Bot Mode.
+- **SETTINGS:** Read-only radio information, diagnostics and compatibility notices.
+
+Bastion focuses on off-grid operation, field-friendly navigation, network visibility and useful local automation. USB/TCP transports, writable radio settings, traceroute and additional offline map formats remain future work.
+
+## Contributing and hardware testing
+
+Report bugs, feature requests and hardware findings at https://github.com/backcountrysignal/Bastion-Meshtastic/issues. Include the phone model, Android version, radio model and firmware version. Copy diagnostics from SETTINGS; do not publish channel keys or private messages.
+
+Before release, verify pairing, configuration download, channel/direct messaging with a second radio, acknowledgements, disconnect/recovery, notification STOP, screen-off operation, GPS capture and offline-pack import on physical Android hardware. CI verifies source analysis, automated tests and Android compilation; it cannot perform these radio checks.
