@@ -13,7 +13,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.lang.ref.WeakReference
 
 class MainActivity : FlutterActivity() {
-    var visible = false
+    var isForeground = false
     override fun onCreate(savedInstanceState: Bundle?) {
         FieldBridge.activity = WeakReference(this)
         if (FlutterEngineCache.getInstance().get(FieldBridge.ENGINE) == null) {
@@ -26,8 +26,8 @@ class MainActivity : FlutterActivity() {
     }
     override fun getCachedEngineId(): String = FieldBridge.ENGINE
     override fun shouldDestroyEngineWithHost(): Boolean = false
-    override fun onResume() { super.onResume(); visible = true; FieldBridge.activity = WeakReference(this) }
-    override fun onPause() { visible = false; FieldFiles.cancelFixOnBackground(); super.onPause() }
+    override fun onResume() { super.onResume(); isForeground = true; FieldBridge.activity = WeakReference(this) }
+    override fun onPause() { isForeground = false; FieldFiles.cancelFixOnBackground(); super.onPause() }
     override fun onDestroy() {
         if (FieldBridge.activity?.get() === this) FieldBridge.activity = null
         if (isFinishing && !isChangingConfigurations) {
@@ -66,14 +66,14 @@ object FieldBridge {
                 "requestNotifications" -> {
                     val host = activity?.get()
                     if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                        if (host?.visible != true || notificationResult != null) result.error("permission", "Open the app to allow notifications", null)
+                        if (host?.isForeground != true || notificationResult != null) result.error("permission", "Open the app to allow notifications", null)
                         else { notificationResult = result; host.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2401) }
                     } else result.success(context.getSystemService(NotificationManager::class.java).areNotificationsEnabled())
                 }
                 "start" -> {
                     val manager = context.getSystemService(NotificationManager::class.java)
                     val channelBlocked = Build.VERSION.SDK_INT >= 26 && manager.getNotificationChannel(BastionConnectionService.CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE
-                    if (activity?.get()?.visible != true) result.error("foreground", "Start screen-off mode while the app is visible", null)
+                    if (activity?.get()?.isForeground != true) result.error("foreground", "Start screen-off mode while the app is visible", null)
                     else if (!manager.areNotificationsEnabled() || channelBlocked) result.error("notifications", "Allow the connection notification before starting", null)
                     else if (Build.VERSION.SDK_INT >= 31 && context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) result.error("bluetooth", "Bluetooth permission is required", null)
                     else if (startResult != null) result.error("busy", "Service is starting", null)

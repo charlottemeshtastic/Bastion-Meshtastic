@@ -28,7 +28,7 @@ object FieldFiles {
                 "mapPack" -> result.success(readPack())
                 "importMapPack" -> {
                     val host = FieldBridge.activity?.get()
-                    if (host?.visible != true || importResult != null) result.error("busy", "Open the app to import one map pack at a time", null)
+                    if (host?.isForeground != true || importResult != null) result.error("busy", "Open the app to import one map pack at a time", null)
                     else {
                         importResult = result
                         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -46,7 +46,7 @@ object FieldFiles {
                 }
                 "locationFix" -> {
                     val host = FieldBridge.activity?.get()
-                    if (host?.visible != true || locationResult != null) result.error("location", "Open the app to request a location fix", null)
+                    if (host?.isForeground != true || locationResult != null) result.error("location", "Open the app to request a location fix", null)
                     else {
                         locationResult = result
                         if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -164,7 +164,7 @@ object FieldFiles {
         if (grants.any { it == PackageManager.PERMISSION_GRANTED }) requestFix() else finishFix(null, "Location permission was declined")
     }
     private fun requestFix() {
-        if (FieldBridge.activity?.get()?.visible != true) { finishFix(null, "Open the app to capture a location"); return }
+        if (FieldBridge.activity?.get()?.isForeground != true) { finishFix(null, "Open the app to capture a location"); return }
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         val provider = when {
             context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED && manager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
