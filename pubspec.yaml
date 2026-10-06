@@ -1,7 +1,7 @@
 name: bastion_meshtastic
-description: Independent Bastion companion for Meshtastic; early Android scaffold.
+description: Independent Bastion companion for Meshtastic; Android field companion with messaging, local automations and node history.
 publish_to: none
-version: 0.1.0+1
+version: 0.5.0+5
 
 environment:
   sdk: '>=3.9.0 <4.0.0'
@@ -9,7 +9,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_blue_plus: ^2.1.0
+  flutter_blue_plus: 2.1.0
+  shared_preferences: ^2.5.3
+  protobuf: 6.0.0
+  fixnum: ^1.1.1
+  flutter_map: 8.2.2
+  latlong2: ^0.9.1
+  flutter_local_notifications: 21.0.0
 
 dev_dependencies:
   flutter_test:
@@ -26,5 +32,5 @@ flutter_launcher_icons:
   android: true
   ios: false
   image_path: branding/bastion-icon.png
-  adaptive_icon_background: '#0B0E11'
+  adaptive_icon_background: '#20282B'
   adaptive_icon_foreground: branding/bastion-icon.png

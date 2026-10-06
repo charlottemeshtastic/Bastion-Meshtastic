@@ -1,25 +1,51 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'services/meshtastic_ble_discovery.dart';
+import 'screens/automations/automations_page.dart';
+import 'screens/nodes/nodes_page.dart';
+import 'screens/chats/chats_page.dart';
+import 'services/messaging/chat_history.dart';
+import 'models/chat_message.dart';
+import 'screens/settings/radio_info_page.dart';
+import 'services/meshtastic/radio_session.dart';
+import 'services/automations/automation_controller.dart';
+import 'services/automations/automation_engine.dart';
+import 'services/alert_notifications.dart';
+import 'services/bot/bot_controller.dart';
+import 'services/connection/connection_manager.dart';
+import 'services/field/offline_maps.dart';
+import 'services/field/coverage.dart';
+import 'services/node_archive.dart';
+import 'models/telemetry_sample.dart';
+import 'screens/map/mesh_map_page.dart';
+import 'screens/tools/field_dashboard_page.dart';
 
 void main() => runApp(const BastionMeshtasticApp());
 
 class BastionMeshtasticApp extends StatelessWidget {
   const BastionMeshtasticApp({super.key});
-  static const cyan = Color(0xFF18D3D3);
+  static const cyan = Color(0xFF9BC5B1);
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Bastion Meshtastic',
+    title: 'Bastion',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: const Color(0xFF0B0E11),
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: cyan,
-        brightness: Brightness.dark,
-      ),
-      appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF0B0E11)),
+      scaffoldBackgroundColor: const Color(0xFF20282B),
+      colorScheme:
+          ColorScheme.fromSeed(
+            seedColor: cyan,
+            brightness: Brightness.dark,
+          ).copyWith(
+            primary: cyan,
+            onPrimary: const Color(0xFF152D23),
+            surface: const Color(0xFF293438),
+            onSurface: const Color(0xFFE6E8E2),
+            onSurfaceVariant: const Color(0xFFC1CBC5),
+          ),
+      appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF20282B)),
     ),
     home: const BastionShell(),
   );
@@ -32,20 +58,128 @@ class BastionShell extends StatefulWidget {
   State<BastionShell> createState() => _BastionShellState();
 }
 
-class _BastionShellState extends State<BastionShell> {
+class _BastionShellState extends State<BastionShell>
+    with WidgetsBindingObserver {
   int index = 0;
   final ble = MeshtasticBleDiscovery();
-  static const labels = ['NODES', 'CHATS', 'MAP', 'TOOLS', 'SETTINGS'];
+  final session = RadioSession();
+  final automations = AutomationController();
+  final chatHistory = ChatHistory();
+  final nodeArchive = NodeArchive();
+  late final AlertNotifications notifications;
+  late final BotController bot;
+  late final ConnectionManager connection;
+  late final CoverageRecorder coverage;
+  final offlineMaps = OfflineMaps();
+  StreamSubscription<AutomationAlert>? _liveAlerts;
+  StreamSubscription<TelemetrySample>? _telemetry;
+  StreamSubscription<ChatMessage>? _chatEvents;
+  StreamSubscription<dynamic>? _observations;
+  Timer? _tick;
+  bool _wasReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    connection = ConnectionManager(session);
+    coverage = CoverageRecorder(session);
+    unawaited(connection.initialize());
+    unawaited(coverage.load());
+    unawaited(offlineMaps.load());
+    bot = BotController(session);
+    unawaited(bot.load());
+    notifications = AlertNotifications(
+      onOpen: () {
+        if (mounted) {
+          setState(() => index = 4);
+        }
+      },
+    );
+    unawaited(notifications.load());
+    _liveAlerts = automations.liveAlerts.listen((alert) {
+      unawaited(notifications.showAlert(alert));
+    });
+    unawaited(automations.load());
+    _chatEvents = session.messages.listen(chatHistory.upsert);
+    unawaited(chatHistory.load());
+    unawaited(nodeArchive.load());
+    _telemetry = session.telemetry.listen((sample) {
+      nodeArchive.record(sample);
+      coverage.record(sample);
+      automations.observeTelemetry(sample);
+    });
+    session.addListener(_sessionChanged);
+    _observations = session.observations.listen((node) {
+      automations.observe(node, batteryFresh: false);
+      final radio = session.localNode;
+      if (radio != null) {
+        nodeArchive.observe(radio, node);
+      }
+    });
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
+      automations.tick(DateTime.now(), readySince: session.readySince);
+    });
+  }
+
+  void _sessionChanged() {
+    final ready = session.status == RadioStatus.ready;
+    if (ready && !_wasReady) {
+      automations.seed(session.nodes, radioId: session.localNode);
+      nodeArchive.seed(session.localNode!, session.nodes);
+    }
+    _wasReady = ready;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      if (!connection.screenOff || state == AppLifecycleState.detached) {
+        bot.pause();
+      }
+      unawaited(
+        state == AppLifecycleState.detached
+            ? connection.stop()
+            : connection.onForeground(false),
+      );
+      if (ble.scanning) {
+        unawaited(ble.stop());
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      unawaited(connection.onForeground(true));
+    }
+  }
+
+  static const labels = ['NODES', 'CHATS', 'MAP', 'TOOLS', 'AUTO', 'SETTINGS'];
   static const icons = [
     Icons.hub_outlined,
     Icons.chat_bubble_outline,
     Icons.map_outlined,
     Icons.build_outlined,
+    Icons.bolt_outlined,
     Icons.settings_outlined,
   ];
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _tick?.cancel();
+    unawaited(_observations?.cancel());
+    unawaited(_chatEvents?.cancel());
+    unawaited(_telemetry?.cancel());
+    unawaited(_liveAlerts?.cancel());
+    connection.dispose();
+    coverage.dispose();
+    offlineMaps.dispose();
+    bot.dispose();
+    notifications.dispose();
+    nodeArchive.dispose();
+    chatHistory.dispose();
+    session.removeListener(_sessionChanged);
+    session.dispose();
+    automations.dispose();
     ble.dispose();
     super.dispose();
   }
@@ -56,40 +190,55 @@ class _BastionShellState extends State<BastionShell> {
       title: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('BASTION',
-              style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  color: BastionMeshtasticApp.cyan,
-                  letterSpacing: 2)),
-          Text('MESHTASTIC EDITION',
-              style: TextStyle(fontSize: 10, letterSpacing: 1.4)),
+          Text(
+            'BASTION',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              color: BastionMeshtasticApp.cyan,
+              letterSpacing: 2,
+            ),
+          ),
+          Text(
+            'OFFLINE MESH COMPANION',
+            style: TextStyle(fontSize: 10, letterSpacing: 1.4),
+          ),
         ],
       ),
     ),
     body: SafeArea(
-      child: IndexedStack(index: index, children: [
-        _NodesPage(discovery: ble),
-        const _FeaturePage(
-          icon: Icons.chat_bubble_outline,
-          title: 'CHATS',
-          detail: 'Direct messages and channel messaging will be enabled after Meshtastic transport and protobuf integration.',
-        ),
-        const _FeaturePage(
-          icon: Icons.map_outlined,
-          title: 'MESH MAP',
-          detail: 'Verified mesh node positions, telemetry and offline maps are next. BLE scan results are not mesh nodes.',
-        ),
-        const _FeaturePage(
-          icon: Icons.build_outlined,
-          title: 'FIELD TOOLS',
-          detail: 'Device configuration, traceroute, diagnostics, telemetry and coverage capture are planned.',
-        ),
-        const _FeaturePage(
-          icon: Icons.settings_outlined,
-          title: 'SETTINGS',
-          detail: 'Connection preferences, channel configuration, privacy and app information will be added here.',
-        ),
-      ]),
+      child: IndexedStack(
+        index: index,
+        children: [
+          NodesPage(
+            discovery: ble,
+            session: session,
+            archive: nodeArchive,
+            connection: connection,
+          ),
+          ChatsPage(session: session, history: chatHistory),
+          MeshMapPage(
+            session: session,
+            archive: nodeArchive,
+            active: index == 2,
+            offlineMaps: offlineMaps,
+            coverage: coverage,
+          ),
+          FieldDashboardPage(
+            session: session,
+            archive: nodeArchive,
+            coverage: coverage,
+          ),
+          AutomationsPage(
+            controller: automations,
+            session: session,
+            archive: nodeArchive,
+            notifications: notifications,
+            bot: bot,
+            connection: connection,
+          ),
+          RadioInfoPage(session: session, connection: connection),
+        ],
+      ),
     ),
     bottomNavigationBar: NavigationBar(
       selectedIndex: index,
@@ -99,128 +248,5 @@ class _BastionShellState extends State<BastionShell> {
           NavigationDestination(icon: Icon(icons[i]), label: labels[i]),
       ],
     ),
-  );
-}
-
-class _NodesPage extends StatelessWidget {
-  const _NodesPage({required this.discovery});
-  final MeshtasticBleDiscovery discovery;
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: discovery,
-    builder: (context, _) => ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        const _Header(
-          title: 'RADIO DISCOVERY',
-          detail: 'Scan for nearby Bluetooth LE devices. Meshtastic identity and protocol connection are not implemented yet.',
-        ),
-        const SizedBox(height: 18),
-        FilledButton.icon(
-          onPressed: discovery.scanning ? null : discovery.scan,
-          icon: Icon(discovery.scanning
-              ? Icons.hourglass_top
-              : Icons.bluetooth_searching),
-          label: Text(discovery.scanning
-              ? 'SCANNING…'
-              : 'SCAN NEARBY DEVICES'),
-        ),
-        if (discovery.scanning)
-          TextButton(
-            onPressed: discovery.stop,
-            child: const Text('STOP SCAN'),
-          ),
-        if (discovery.error != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Text(
-              discovery.error!,
-              style: const TextStyle(color: Colors.orangeAccent),
-            ),
-          ),
-        const SizedBox(height: 16),
-        if (discovery.results.isEmpty)
-          const Text(
-            'No BLE devices discovered yet.',
-            style: TextStyle(color: Colors.white70),
-          )
-        else
-          for (final item in discovery.results)
-            Card(
-              child: ListTile(
-                leading: const Icon(
-                  Icons.bluetooth,
-                  color: BastionMeshtasticApp.cyan,
-                ),
-                title: Text(item.advertisementData.advName.isNotEmpty
-                    ? item.advertisementData.advName
-                    : 'Unnamed BLE device'),
-                subtitle: Text(item.device.remoteId.str),
-                trailing: Text('${item.rssi} dBm'),
-              ),
-            ),
-        const SizedBox(height: 16),
-        const Text(
-          'Discovery only. Do not use this build for emergency communication.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-      ],
-    ),
-  );
-}
-
-class _Header extends StatelessWidget {
-  const _Header({required this.title, required this.detail});
-  final String title;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: const Color(0xFF12171C),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(
-        color: BastionMeshtasticApp.cyan.withValues(alpha: 0.5),
-      ),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: BastionMeshtasticApp.cyan,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(detail, style: const TextStyle(height: 1.5)),
-      ],
-    ),
-  );
-}
-
-class _FeaturePage extends StatelessWidget {
-  const _FeaturePage({
-    required this.icon,
-    required this.title,
-    required this.detail,
-  });
-  final IconData icon;
-  final String title;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(18),
-    children: [
-      const SizedBox(height: 20),
-      Icon(icon, size: 48, color: BastionMeshtasticApp.cyan),
-      const SizedBox(height: 16),
-      _Header(title: title, detail: detail),
-    ],
   );
 }
