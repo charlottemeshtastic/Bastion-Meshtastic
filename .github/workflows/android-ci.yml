@@ -27,6 +27,13 @@ jobs:
           rm -f test/widget_test.dart
       - name: Prepare permissions
         run: python3 scripts/prepare_android.py
+      - name: Normalize launcher icon
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+          magick branding/bastion-icon.png -resize 1024x1024 -strip -define png:color-type=6 PNG32:branding/bastion-icon-normalized.png
+          mv branding/bastion-icon-normalized.png branding/bastion-icon.png
+          file branding/bastion-icon.png
       - name: Install dependencies and icons
         run: |
           flutter pub get
@@ -48,4 +55,3 @@ jobs:
           name: Bastion-Meshtastic-Development-APK
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14
-
