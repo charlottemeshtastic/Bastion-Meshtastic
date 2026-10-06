@@ -5,9 +5,9 @@ import 'package:bastion_meshtastic/main.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
-  testWidgets('Bastion Meshtastic shell exposes six tabs', (tester) async {
+  testWidgets('Bastion shell exposes six tabs', (tester) async {
     await tester.pumpWidget(const BastionMeshtasticApp());
-    expect(find.text('MESHTASTIC EDITION'), findsOneWidget);
+    expect(find.text('OFFLINE MESH COMPANION'), findsOneWidget);
     for (final name in ['NODES', 'CHATS', 'MAP', 'TOOLS', 'AUTO', 'SETTINGS']) {
       expect(find.text(name), findsWidgets);
     }

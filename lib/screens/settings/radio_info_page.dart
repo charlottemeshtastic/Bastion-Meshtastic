@@ -10,7 +10,7 @@ class RadioInfoPage extends StatelessWidget {
   final ConnectionManager? connection;
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: Listenable.merge([session, if (connection != null) connection!]),
+    animation: Listenable.merge([session, ?connection]),
     builder: (context, _) => ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -107,12 +107,32 @@ class RadioInfoPage extends StatelessWidget {
             }
           },
         ),
+        const Divider(),
+        const Text(
+          'ABOUT BASTION',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Independent companion for Meshtastic® devices. '
+          'Bastion is not affiliated with or endorsed by Meshtastic LLC '
+          'or the Meshtastic project.',
+        ),
+        const SizedBox(height: 8),
+        const SelectableText(
+          'Meshtastic® is a registered trademark of Meshtastic LLC. '
+          'Meshtastic software components are released under various licenses, '
+          'see GitHub for details. No warranty is provided - use at your own risk.\n'
+          'Project: https://meshtastic.org\n'
+          'Licenses: https://github.com/meshtastic\n'
+          'Trademark guidance: https://meshtastic.org/docs/legal/licensing-and-trademark/',
+        ),
         OutlinedButton(
           onPressed: () => showLicensePage(
             context: context,
-            applicationName: 'Bastion Meshtastic',
+            applicationName: 'Bastion',
             applicationLegalese:
-                'Independent Meshtastic companion. Protocol definitions: '
+                'Independent companion for Meshtastic® devices. '
                 'Meshtastic, GPL-3.0-only. See source repository NOTICE.md and protos/LICENSE.',
           ),
           child: const Text('OPEN SOURCE LICENSES'),

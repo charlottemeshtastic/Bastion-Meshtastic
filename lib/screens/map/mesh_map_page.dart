@@ -252,7 +252,7 @@ class _MeshMapPageState extends State<MeshMapPage> {
                     initialZoom: 10,
                     minZoom: 0,
                     maxZoom: 19,
-                    backgroundColor: const Color(0xFF14212A),
+                    backgroundColor: const Color(0xFF293438),
                     onMapReady: () {
                       mapReady = true;
                       fit(nodes);
@@ -345,7 +345,7 @@ class _MeshMapPageState extends State<MeshMapPage> {
                                           : Icons.location_on,
                                       color: node.number == selectedNode
                                           ? Colors.amber
-                                          : const Color(0xFF18D3D3),
+                                          : const Color(0xFF9BC5B1),
                                       size: 32,
                                     ),
                                     Container(

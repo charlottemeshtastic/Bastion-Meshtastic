@@ -24,21 +24,28 @@ void main() => runApp(const BastionMeshtasticApp());
 
 class BastionMeshtasticApp extends StatelessWidget {
   const BastionMeshtasticApp({super.key});
-  static const cyan = Color(0xFF18D3D3);
+  static const cyan = Color(0xFF9BC5B1);
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Bastion Meshtastic',
+    title: 'Bastion',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: const Color(0xFF0B0E11),
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: cyan,
-        brightness: Brightness.dark,
-      ),
-      appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF0B0E11)),
+      scaffoldBackgroundColor: const Color(0xFF20282B),
+      colorScheme:
+          ColorScheme.fromSeed(
+            seedColor: cyan,
+            brightness: Brightness.dark,
+          ).copyWith(
+            primary: cyan,
+            onPrimary: const Color(0xFF152D23),
+            surface: const Color(0xFF293438),
+            onSurface: const Color(0xFFE6E8E2),
+            onSurfaceVariant: const Color(0xFFC1CBC5),
+          ),
+      appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF20282B)),
     ),
     home: const BastionShell(),
   );
@@ -192,7 +199,7 @@ class _BastionShellState extends State<BastionShell>
             ),
           ),
           Text(
-            'MESHTASTIC EDITION',
+            'OFFLINE MESH COMPANION',
             style: TextStyle(fontSize: 10, letterSpacing: 1.4),
           ),
         ],

@@ -188,7 +188,7 @@ class ConnectionManager extends ChangeNotifier {
         return;
       }
       final success = await backend.start(
-        'Monitoring radio !${_verifiedRadio!.toRadixString(16).padLeft(8, '0')}',
+        'Connection service active · radio !${_verifiedRadio!.toRadixString(16).padLeft(8, '0')}',
       );
       if (!success) {
         throw StateError('Android did not confirm the connection service.');

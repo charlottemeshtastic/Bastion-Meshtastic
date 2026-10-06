@@ -13,7 +13,7 @@ String radioDiagnostics(
       .where((c) => c.role.name != 'DISABLED')
       .length;
   return [
-    'Bastion Meshtastic 0.5.0+5 · diagnostics',
+    'Bastion 0.5.0+5 · diagnostics',
     'Captured: ${(now ?? DateTime.now()).toUtc().toIso8601String()}',
     'Connection: ${session.status.name}',
     'Firmware: ${session.firmware ?? 'unknown'}',

@@ -22,11 +22,7 @@ class NodesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: Listenable.merge([
-      discovery,
-      session,
-      if (connection != null) connection!,
-    ]),
+    animation: Listenable.merge([discovery, session, ?connection]),
     builder: (context, _) {
       final busy =
           session.status == RadioStatus.connecting ||

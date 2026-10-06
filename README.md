@@ -1,6 +1,6 @@
-# Bastion — Meshtastic Edition
+# Bastion
 
-Independent Android Flutter companion for Meshtastic with Bastion's black/charcoal/cyan identity.
+Independent Android Flutter companion for Meshtastic® devices with a charcoal, muted sage and warm off-white theme.
 
 ## Implemented in this development branch
 
@@ -259,3 +259,18 @@ history. MAP shows amber receiver-observation markers; tap one for readings and 
 age/accuracy, or fit recorded points. CSV copying includes receiver coordinates,
 packet/record/fix timestamps, source/receiver node IDs and present signal readings.
 Clearing observations keeps node/chat/automation history and offline tiles.
+
+## Branding and trademark attribution
+
+Bastion is independently branded and is not affiliated with or endorsed by
+Meshtastic LLC or the Meshtastic project. The Meshtastic name is used descriptively
+to identify device compatibility, not in the app name or launcher branding.
+No official Meshtastic logo is incorporated into Bastion's icon.
+
+Meshtastic® is a registered trademark of Meshtastic LLC. Meshtastic software
+components are released under various licenses, see GitHub for details.
+No warranty is provided - use at your own risk.
+
+Project: https://meshtastic.org
+Software licenses: https://github.com/meshtastic
+Trademark guidance: https://meshtastic.org/docs/legal/licensing-and-trademark/
