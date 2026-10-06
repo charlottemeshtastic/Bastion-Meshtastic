@@ -31,7 +31,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y imagemagick
-          magick branding/bastion-icon.png -resize 1024x1024 -strip -define png:color-type=6 PNG32:branding/bastion-icon-normalized.png
+          convert branding/bastion-icon.png -resize 1024x1024 -strip -define png:color-type=6 PNG32:branding/bastion-icon-normalized.png
           mv branding/bastion-icon-normalized.png branding/bastion-icon.png
           file branding/bastion-icon.png
       - name: Install dependencies and icons
