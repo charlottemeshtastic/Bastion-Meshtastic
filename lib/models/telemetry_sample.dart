@@ -11,6 +11,7 @@ class TelemetrySample {
     this.rssi,
     this.channelUtilization,
     this.airUtilization,
+    this.viaMqtt = false,
   });
   final int radio;
   final int node;
@@ -22,6 +23,7 @@ class TelemetrySample {
   final int? rssi;
   final double? channelUtilization;
   final double? airUtilization;
+  final bool viaMqtt;
   bool get hasValues =>
       battery != null ||
       powered != null ||
@@ -33,6 +35,7 @@ class TelemetrySample {
   Map<String, dynamic> toJson() => {
     'radio': radio,
     'node': node,
+    'viaMqtt': viaMqtt,
     'time': time.toIso8601String(),
     'battery': battery,
     'powered': powered,
@@ -49,6 +52,7 @@ class TelemetrySample {
   factory TelemetrySample.fromJson(Map<String, dynamic> j) => TelemetrySample(
     radio: j['radio'] as int,
     node: j['node'] as int,
+    viaMqtt: j['viaMqtt'] as bool? ?? false,
     time: DateTime.parse(j['time'] as String),
     battery: j['battery'] as int?,
     powered: j['powered'] as bool?,

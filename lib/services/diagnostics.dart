@@ -2,13 +2,18 @@ import 'meshtastic/radio_session.dart';
 
 /// A bounded support summary. Never serializes configuration messages: those
 /// can contain channel keys. No chat text, node positions or BLE addresses.
-String radioDiagnostics(RadioSession session, {DateTime? now}) {
+String radioDiagnostics(
+  RadioSession session, {
+  DateTime? now,
+  bool screenOff = false,
+  bool autoReconnect = false,
+}) {
   final radio = session.localNode;
   final enabled = session.channels.values
       .where((c) => c.role.name != 'DISABLED')
       .length;
   return [
-    'Bastion Meshtastic 0.4.0+4 · diagnostics',
+    'Bastion Meshtastic 0.5.0+5 · diagnostics',
     'Captured: ${(now ?? DateTime.now()).toUtc().toIso8601String()}',
     'Connection: ${session.status.name}',
     'Firmware: ${session.firmware ?? 'unknown'}',
@@ -20,7 +25,8 @@ String radioDiagnostics(RadioSession session, {DateTime? now}) {
     'Configuration sections: ${session.configuration.length}',
     'Module sections: ${session.modules.length}',
     'Malformed frames discarded: ${session.malformedFrames}',
-    'Monitoring: foreground only; disconnects when app enters background',
+    'Monitoring: ${screenOff ? 'explicit Android connected-device service active' : 'foreground only'}',
+    'Connection recovery: ${autoReconnect ? 'enabled for selected radio; bounded retries' : 'off'}',
     'Hardware interoperability validation: pending',
     'This summary excludes channel keys, chat text, node coordinates and BLE addresses.',
   ].join('\n');

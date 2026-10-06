@@ -6,6 +6,9 @@ import '../../services/geo.dart';
 import '../../services/node_archive.dart';
 import '../../services/meshtastic/radio_session.dart';
 import '../nodes/node_detail_page.dart';
+import '../../services/field/offline_maps.dart';
+import '../../services/field/coverage.dart';
+import 'offline_maps_page.dart';
 
 class MeshMapPage extends StatefulWidget {
   const MeshMapPage({
@@ -13,10 +16,14 @@ class MeshMapPage extends StatefulWidget {
     required this.session,
     required this.archive,
     this.active = true,
+    this.offlineMaps,
+    this.coverage,
   });
   final RadioSession session;
   final NodeArchive archive;
   final bool active;
+  final OfflineMaps? offlineMaps;
+  final CoverageRecorder? coverage;
   @override
   State<MeshMapPage> createState() => _MeshMapPageState();
 }
@@ -27,6 +34,8 @@ class _MeshMapPageState extends State<MeshMapPage> {
   int? selectedNode;
   int? measureFrom;
   bool online = false;
+  bool useOffline = true;
+  int? imageRevision;
   bool mapReady = false;
   bool tileError = false;
   int? fittedRadio;
@@ -56,7 +65,12 @@ class _MeshMapPageState extends State<MeshMapPage> {
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: Listenable.merge([widget.session, widget.archive]),
+    animation: Listenable.merge([
+      widget.session,
+      widget.archive,
+      if (widget.offlineMaps != null) widget.offlineMaps!,
+      if (widget.coverage != null) widget.coverage!,
+    ]),
     builder: (context, _) {
       final radios = {
         ...widget.archive.radios,
@@ -67,6 +81,14 @@ class _MeshMapPageState extends State<MeshMapPage> {
           : (radios.contains(widget.session.localNode)
                 ? widget.session.localNode
                 : radios.firstOrNull);
+      final pack = useOffline && !online ? widget.offlineMaps?.pack : null;
+      final measured =
+          widget.coverage?.points.where((p) => p.radio == radio).toList() ??
+          <CoveragePoint>[];
+      if (imageRevision != widget.offlineMaps?.revision) {
+        imageRevision = widget.offlineMaps?.revision;
+        PaintingBinding.instance.imageCache.clear();
+      }
       final all = radio == null ? <MeshNode>[] : widget.archive.nodesFor(radio);
       final nodes = all.where((n) => n.hasPosition).toList();
       if (widget.active &&
@@ -129,9 +151,87 @@ class _MeshMapPageState extends State<MeshMapPage> {
             value: online,
             onChanged: (v) => setState(() {
               online = v;
+              if (v) {
+                useOffline = false;
+              }
               tileError = false;
             }),
           ),
+          if (widget.offlineMaps != null)
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.folder_open),
+                    label: const Text('OFFLINE MAP PACK'),
+                    onPressed: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              OfflineMapsPage(maps: widget.offlineMaps!),
+                        ),
+                      );
+                      if (mounted && widget.offlineMaps!.pack != null) {
+                        setState(() {
+                          useOffline = true;
+                          online = false;
+                          tileError = false;
+                        });
+                        final imported = widget.offlineMaps!.pack!;
+                        if (mapReady) {
+                          controller.move(
+                            LatLng(imported.latitude, imported.longitude),
+                            imported.minZoom.toDouble(),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                ),
+                if (widget.offlineMaps!.pack != null)
+                  IconButton(
+                    tooltip: 'Show offline pack',
+                    icon: const Icon(Icons.offline_pin),
+                    onPressed: () => setState(() {
+                      useOffline = true;
+                      online = false;
+                      tileError = false;
+                      final p = widget.offlineMaps!.pack!;
+                      if (mapReady) {
+                        controller.move(
+                          LatLng(p.latitude, p.longitude),
+                          p.minZoom.toDouble(),
+                        );
+                      }
+                    }),
+                  ),
+                if (measured.isNotEmpty)
+                  IconButton(
+                    tooltip: 'Fit measured receiver points',
+                    icon: const Icon(Icons.route),
+                    onPressed: !mapReady
+                        ? null
+                        : () => controller.fitCamera(
+                            CameraFit.coordinates(
+                              coordinates: measured
+                                  .map(
+                                    (p) => LatLng(
+                                      p.location.latitude,
+                                      p.location.longitude,
+                                    ),
+                                  )
+                                  .toList(),
+                              padding: const EdgeInsets.all(40),
+                              maxZoom: 15,
+                            ),
+                          ),
+                  ),
+              ],
+            ),
+          if (tileError && pack != null)
+            const Text(
+              'Some offline tiles are unavailable · no network fallback',
+            ),
           if (widget.archive.error != null)
             Text(
               widget.archive.error!,
@@ -150,7 +250,7 @@ class _MeshMapPageState extends State<MeshMapPage> {
                   options: MapOptions(
                     initialCenter: const LatLng(35.322, -83.807),
                     initialZoom: 10,
-                    minZoom: 2,
+                    minZoom: 0,
                     maxZoom: 19,
                     backgroundColor: const Color(0xFF14212A),
                     onMapReady: () {
@@ -159,6 +259,27 @@ class _MeshMapPageState extends State<MeshMapPage> {
                     },
                   ),
                   children: [
+                    if (pack != null && widget.active)
+                      TileLayer(
+                        key: ValueKey(
+                          'offline-${widget.offlineMaps!.revision}',
+                        ),
+                        urlTemplate: '${pack.path}/{z}/{x}/{y}.png',
+                        tileProvider: FileTileProvider(),
+                        minNativeZoom: pack.minZoom,
+                        maxNativeZoom: pack.maxZoom,
+                        minZoom: pack.minZoom.toDouble(),
+                        maxZoom: pack.maxZoom.toDouble(),
+                        errorTileCallback: (_, _, _) {
+                          if (!tileError && mounted) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                setState(() => tileError = true);
+                              }
+                            });
+                          }
+                        },
+                      ),
                     if (online && widget.active && nodes.isNotEmpty)
                       TileLayer(
                         urlTemplate:
@@ -176,6 +297,35 @@ class _MeshMapPageState extends State<MeshMapPage> {
                       ),
                     MarkerLayer(
                       markers: [
+                        for (final p in measured)
+                          Marker(
+                            point: LatLng(
+                              p.location.latitude,
+                              p.location.longitude,
+                            ),
+                            width: 30,
+                            height: 30,
+                            child: GestureDetector(
+                              onTap: () => showModalBottomSheet<void>(
+                                context: context,
+                                builder: (context) => Padding(
+                                  padding: const EdgeInsets.all(18),
+                                  child: Text(
+                                    'MEASURED RECEIVER POINT\n${p.time.toLocal()}\n'
+                                    'Packet from !${p.node.toRadixString(16).padLeft(8, '0')}\n'
+                                    'RX SNR: ${p.snr ?? 'not present'} dB · RX RSSI: ${p.rssi ?? 'not present'} dBm\n'
+                                    'Phone fix: ${p.location.time.toLocal()} · ±${p.location.accuracy.toStringAsFixed(0)} m\n'
+                                    'Last RF hop may be a relay. This point does not prove continuous coverage.',
+                                  ),
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.circle,
+                                color: Colors.amber,
+                                size: 16,
+                              ),
+                            ),
+                          ),
                         for (final node in nodes)
                           Marker(
                             point: point(node),
@@ -219,7 +369,7 @@ class _MeshMapPageState extends State<MeshMapPage> {
                     ),
                   ],
                 ),
-                if (nodes.isEmpty)
+                if (nodes.isEmpty && pack == null && measured.isEmpty)
                   const Center(
                     child: Card(
                       child: Padding(
@@ -239,6 +389,8 @@ class _MeshMapPageState extends State<MeshMapPage> {
                     child: Text(
                       online
                           ? '© OpenStreetMap contributors'
+                          : pack != null
+                          ? pack.attribution
                           : 'Saved positions · no street tiles',
                       style: const TextStyle(fontSize: 11),
                     ),
@@ -253,7 +405,7 @@ class _MeshMapPageState extends State<MeshMapPage> {
               padding: const EdgeInsets.all(10),
               children: [
                 Text(
-                  '${nodes.length} positioned · ${all.length - nodes.length} without position · last known locations',
+                  '${nodes.length} positioned · ${all.length - nodes.length} without position · ${measured.length} receiver observations',
                 ),
                 if (selected != null) ...[
                   Text(

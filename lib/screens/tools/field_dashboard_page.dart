@@ -3,15 +3,19 @@ import '../../models/mesh_node.dart';
 import '../../services/node_archive.dart';
 import '../../services/meshtastic/radio_session.dart';
 import '../nodes/node_detail_page.dart';
+import '../../services/field/coverage.dart';
+import 'coverage_panel.dart';
 
 class FieldDashboardPage extends StatefulWidget {
   const FieldDashboardPage({
     super.key,
     required this.session,
     required this.archive,
+    this.coverage,
   });
   final RadioSession session;
   final NodeArchive archive;
+  final CoverageRecorder? coverage;
   @override
   State<FieldDashboardPage> createState() => _FieldDashboardPageState();
 }
@@ -61,6 +65,8 @@ class _FieldDashboardPageState extends State<FieldDashboardPage> {
                 ? 'Connected · receiving observations'
                 : 'Offline archive · connect to receive updates',
           ),
+          if (widget.coverage != null)
+            CoveragePanel(recorder: widget.coverage!),
           if (widget.archive.loading) const LinearProgressIndicator(),
           if (widget.archive.error != null)
             Text(

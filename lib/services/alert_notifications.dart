@@ -61,7 +61,7 @@ class AndroidAlertBackend implements AlertNotificationBackend {
         'bastion_local_alerts_v1',
         'Bastion mesh alerts',
         channelDescription:
-            'Alerts from local mesh rules while connected in the foreground',
+            'Alerts from local mesh rules while a radio session is active',
         importance: Importance.high,
         priority: Priority.high,
         icon: 'ic_stat_bastion',

@@ -5,8 +5,9 @@ import '../../services/meshtastic/radio_session.dart';
 import 'bot_settings_page.dart';
 
 class BotPanel extends StatelessWidget {
-  const BotPanel({super.key, required this.bot});
+  const BotPanel({super.key, required this.bot, this.screenOff = false});
   final BotController bot;
+  final bool screenOff;
   Future<void> _edit(BuildContext context) async {
     final channels =
         bot.session.channels.values
@@ -53,8 +54,13 @@ class BotPanel extends StatelessWidget {
                     : bot.setEnabled,
               ),
               const Text(
-                'Free, local and foreground only. Direct messages by default. '
-                'Disconnecting or leaving the app turns Bot Mode off.',
+                'Free and local. Direct messages by default. '
+                'Bot turns off on disconnect; the NODES screen-off service is required to keep it active while backgrounded.',
+              ),
+              Text(
+                screenOff
+                    ? 'Screen-off service active; Bot Mode can continue while connected.'
+                    : 'Screen-off service off; leaving the app pauses Bot Mode.',
               ),
               Text(
                 'Away replies: ${bot.settings.autoReply ? 'on' : 'off'} · commands: ${bot.settings.commands ? 'on' : 'off'} · '

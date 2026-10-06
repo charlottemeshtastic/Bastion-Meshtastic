@@ -178,7 +178,7 @@ class _BotSettingsPageState extends State<BotSettingsPage> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'Foreground only. Bot turns off on disconnect, backgrounding or app restart. '
+            'Bot turns off on disconnect or app restart. Background use requires the NODES screen-off service. '
             'No queued replies, automatic retries, AI service or subscription.',
           ),
         ],

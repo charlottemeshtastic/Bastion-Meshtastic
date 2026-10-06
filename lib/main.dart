@@ -12,6 +12,9 @@ import 'services/automations/automation_controller.dart';
 import 'services/automations/automation_engine.dart';
 import 'services/alert_notifications.dart';
 import 'services/bot/bot_controller.dart';
+import 'services/connection/connection_manager.dart';
+import 'services/field/offline_maps.dart';
+import 'services/field/coverage.dart';
 import 'services/node_archive.dart';
 import 'models/telemetry_sample.dart';
 import 'screens/map/mesh_map_page.dart';
@@ -58,6 +61,9 @@ class _BastionShellState extends State<BastionShell>
   final nodeArchive = NodeArchive();
   late final AlertNotifications notifications;
   late final BotController bot;
+  late final ConnectionManager connection;
+  late final CoverageRecorder coverage;
+  final offlineMaps = OfflineMaps();
   StreamSubscription<AutomationAlert>? _liveAlerts;
   StreamSubscription<TelemetrySample>? _telemetry;
   StreamSubscription<ChatMessage>? _chatEvents;
@@ -69,6 +75,11 @@ class _BastionShellState extends State<BastionShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    connection = ConnectionManager(session);
+    coverage = CoverageRecorder(session);
+    unawaited(connection.initialize());
+    unawaited(coverage.load());
+    unawaited(offlineMaps.load());
     bot = BotController(session);
     unawaited(bot.load());
     notifications = AlertNotifications(
@@ -88,6 +99,7 @@ class _BastionShellState extends State<BastionShell>
     unawaited(nodeArchive.load());
     _telemetry = session.telemetry.listen((sample) {
       nodeArchive.record(sample);
+      coverage.record(sample);
       automations.observeTelemetry(sample);
     });
     session.addListener(_sessionChanged);
@@ -117,11 +129,19 @@ class _BastionShellState extends State<BastionShell>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
-      bot.pause();
-      unawaited(session.disconnect());
+      if (!connection.screenOff || state == AppLifecycleState.detached) {
+        bot.pause();
+      }
+      unawaited(
+        state == AppLifecycleState.detached
+            ? connection.stop()
+            : connection.onForeground(false),
+      );
       if (ble.scanning) {
         unawaited(ble.stop());
       }
+    } else if (state == AppLifecycleState.resumed) {
+      unawaited(connection.onForeground(true));
     }
   }
 
@@ -143,6 +163,9 @@ class _BastionShellState extends State<BastionShell>
     unawaited(_chatEvents?.cancel());
     unawaited(_telemetry?.cancel());
     unawaited(_liveAlerts?.cancel());
+    connection.dispose();
+    coverage.dispose();
+    offlineMaps.dispose();
     bot.dispose();
     notifications.dispose();
     nodeArchive.dispose();
@@ -179,22 +202,34 @@ class _BastionShellState extends State<BastionShell>
       child: IndexedStack(
         index: index,
         children: [
-          NodesPage(discovery: ble, session: session, archive: nodeArchive),
+          NodesPage(
+            discovery: ble,
+            session: session,
+            archive: nodeArchive,
+            connection: connection,
+          ),
           ChatsPage(session: session, history: chatHistory),
           MeshMapPage(
             session: session,
             archive: nodeArchive,
             active: index == 2,
+            offlineMaps: offlineMaps,
+            coverage: coverage,
           ),
-          FieldDashboardPage(session: session, archive: nodeArchive),
+          FieldDashboardPage(
+            session: session,
+            archive: nodeArchive,
+            coverage: coverage,
+          ),
           AutomationsPage(
             controller: automations,
             session: session,
             archive: nodeArchive,
             notifications: notifications,
             bot: bot,
+            connection: connection,
           ),
-          RadioInfoPage(session: session),
+          RadioInfoPage(session: session, connection: connection),
         ],
       ),
     ),

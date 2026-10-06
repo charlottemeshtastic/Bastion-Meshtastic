@@ -18,7 +18,7 @@ s=s.replace('android:label="bastion_meshtastic"', 'android:label="Bastion Meshta
 p.write_text(s)
 print('Prepared Android manifest')
 
-# Immediate Android alert notifications; no alarms, receivers or background service.
+# Immediate Android alert notifications and explicit connected-device service.
 p = Path('android/app/src/main/AndroidManifest.xml')
 s = p.read_text()
 if 'android.permission.POST_NOTIFICATIONS' not in s:
@@ -49,3 +49,23 @@ resources = Path('android/app/src/main/res')
 (resources / 'raw/keep.xml').write_text('''<resources xmlns:tools="http://schemas.android.com/tools"
     tools:keep="@drawable/ic_stat_bastion" />\n''')
 print('Prepared Android notifications, SDK and desugaring')
+
+# Reproducible Android host, service, offline import and foreground-only GPS.
+import shutil
+p = Path('android/app/src/main/AndroidManifest.xml')
+s = p.read_text()
+for permission in ['FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_CONNECTED_DEVICE', 'WAKE_LOCK', 'ACCESS_COARSE_LOCATION']:
+    name = 'android.permission.' + permission
+    if name not in s:
+        s = s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+            '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="' + name + '" />')
+s = s.replace('android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30"',
+    'android:name="android.permission.ACCESS_FINE_LOCATION"')
+if '.BastionConnectionService' not in s:
+    s = s.replace('</application>', '<service android:name=".BastionConnectionService" android:exported="false" android:foregroundServiceType="connectedDevice" android:stopWithTask="true" />\n    </application>')
+p.write_text(s)
+native = Path('android/app/src/main/kotlin/app/bastion/bastion_meshtastic')
+native.mkdir(parents=True, exist_ok=True)
+for source in Path('android_support').glob('*.kt'):
+    shutil.copyfile(source, native / source.name)
+print('Prepared explicit screen-off service, map importer and location capture')

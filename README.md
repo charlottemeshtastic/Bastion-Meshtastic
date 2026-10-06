@@ -16,13 +16,13 @@ Independent Android Flutter companion for Meshtastic with Bastion's black/charco
 - Locally saved rules and up to 200 live alerts; isolated simulation matches custom thresholds and targets.
 - Opt-in Android notifications for new live alerts, with a permission flow and test button.
 - Copyable connection diagnostics that exclude channel keys, messages, node coordinates and BLE addresses.
-- Foreground-only monitoring: pauses on Bluetooth disconnect, radio reboot or app background.
+- Foreground monitoring by default; opt-in Android connected-device service supports screen-off operation. Disconnects pause rules and Bot Mode.
 - Node map with tappable saved positions, distance/bearing measurements and optional online street tiles.
 - Local node archive and received telemetry history, separated by radio identity.
 - Field dashboard with search, low-battery filtering, node details and battery/SNR observation charts.
 
 **Development build, not a completed release.** BLE hardware validation is pending.
-Downloadable offline street maps, background monitoring, radio
+Provider-downloaded offline maps, production signing, radio
 configuration writes and release signing remain outstanding. Do not rely on this
 development build for emergency communications.
 
@@ -64,10 +64,10 @@ The CI APK is a development artifact and does not establish production signing.
 Downloaded node history seeds the automation engine silently, so reconnecting
 does not label the entire database as newly discovered. Unknown timestamps and
 battery readings remain unknown. Powered radios do not trigger low-battery
-alerts. Silence alerts require continuously connected foreground monitoring for
+alerts. Silence alerts require continuously connected monitoring for
 the configured duration; phone disconnection is not a repeater outage.
-Android notifications can be enabled in AUTO. Background monitoring is not implemented;
-notifications only reflect live alerts produced while the app is open and connected.
+Android notifications can be enabled in AUTO. Screen-off monitoring requires the explicit
+NODES connection service; notifications reflect new live alerts while connected.
 
 ## Focused roadmap
 
@@ -80,12 +80,14 @@ notifications only reflect live alerts produced while the app is open and connec
 - [x] Persistent verified node database and received telemetry history.
 - [x] Channel and direct messaging with honest delivery feedback.
 - [x] Opt-in Android notifications for live alerts.
-- [ ] Foreground service and background monitoring.
+- [x] Opt-in Android connected-device service; screen-off hardware validation pending.
 - [x] Node positions, interactive map and geometric distance/bearing.
-- [ ] Downloadable offline basemaps, traceroute and network diagnostics.
+- [x] Importable offline XYZ PNG map packs.
+- [ ] Provider downloads, MBTiles/PMTiles, GPX and traceroute diagnostics.
 - [x] Custom thresholds, node/radio targets and rule editing.
 - [ ] Geofences and opt-in scheduled messages.
-- [ ] Field coverage sessions and repeater dashboard.
+- [x] Measured receiver observations with explicit phone fix and CSV copying.
+- [ ] Full field missions and repeater dashboard.
 - [ ] Release signing, privacy/license review and transport expansion.
 
 ## Licenses
@@ -120,7 +122,7 @@ MAP starts with saved position markers on a plain background and makes no tile
 requests until **Online street map** is enabled. The online layer requests visible
 areas from OpenStreetMap, with attribution, an app-specific user agent and the map
 library's normal HTTP tile cache. It only runs while MAP is the active tab.
-It does not download regions or guarantee offline street tiles. Cached node markers
+Online mode does not download regions or guarantee offline tiles. Imported packs (below) supply offline tiles. Cached node markers
 and distance calculations work without internet. Distance/bearing is great-circle
 geometry; it is not a terrain, line-of-sight, radio connectivity or coverage estimate.
 Zero/zero, invalid and incomplete position reports cannot replace known positions.
@@ -151,7 +153,7 @@ radios discards the previous monitor's node set, and radio-scoped rules evaluate
 only on the chosen radio. Battery rules consume fresh battery telemetry; unrelated
 packets carrying a cached low reading cannot fire a battery alert. Conditions alert
 once per monitoring session and rearm after recovery or a rule edit. Silence checks
-run approximately once a minute and require continuous foreground monitoring for
+run approximately once a minute and require continuous connected monitoring for
 the full selected duration. Alerts carry their source radio, and history can be
 filtered or cleared independently of saved rules. Legacy alerts may have no radio ID.
 
@@ -161,7 +163,7 @@ notification channel; restored history and simulated rules do not replay as syst
 notifications. Notification taps open AUTO. OS permission/channel settings and Do
 Not Disturb may suppress notifications; in-app history remains available. Disabling
 the toggle stops future notifications. This feature does not schedule alarms,
-transmit messages or keep Bluetooth running after Bastion enters the background.
+keep Bluetooth running themselves. The separate NODES screen-off service is required for background monitoring.
 The native notification permission, icon and desugaring setup is generated by
 scripts/prepare_android.py. Notification behavior requires Android device QA.
 
@@ -174,15 +176,15 @@ channel keys, channel names, messages, coordinates and Bluetooth addresses.
 Open **AUTO → BOT SETTINGS** to customize an away reply, choose `!help` / `!status`,
 set a 1–60 minute sender cooldown, and optionally select channels for commands.
 Save, connect a radio, and switch **Bot Mode ON**. It defaults OFF on every app
-launch and turns OFF on disconnect, backgrounding, or settings changes. It is
-armed only for the current connected radio. There is no background service,
+launch and turns OFF on disconnect or settings changes. Without the explicit screen-off service, backgrounding also turns it OFF. It is
+armed only for the current connected radio. There is no automatic service start,
 server, AI service, subscription, scheduling, reply queue, or automatic retry.
 
 Normal direct messages can receive the custom away reply. Channel replies are
 OFF by default; if enabled, only exact `!help` and `!status` commands on explicitly
 selected, currently enabled channel indices trigger a broadcast reply. Ordinary
 channel conversations never trigger away replies. `!status` shares the radio ID,
-known-node count and foreground status, without coordinates, messages, channel
+known-node count and active bot status, without coordinates, messages, channel
 keys or firmware/configuration contents. Direct-message encryption follows radio
 configuration, as it does for manually sent messages.
 
@@ -203,3 +205,57 @@ acknowledgement is not a read receipt. Bot replies also appear in CHATS. Logs an
 settings stay on the phone; incoming message bodies are not duplicated in bot
 logs. Replies plus the bot marker must fit Meshtastic's 233-byte UTF-8 payload.
 Real-radio interoperability and Android lifecycle testing remain required.
+
+
+## Field connection, offline maps and measurements (v0.5)
+
+**NODES** now offers two explicit controls, OFF on every launch:
+
+- **Keep connection with screen off:** starts an Android `connectedDevice` foreground
+  service while the app is visible and a verified radio is connected. Notification
+  permission is required so the persistent connection notification and STOP action
+  remain available. A retained Flutter engine owns the existing BLE session. A
+  partial wake lock and a six-hour maximum lease support Dart timers with the screen
+  off. A missing heartbeat for 90 seconds ends the lease. This consumes more phone
+  battery; manufacturers' process/battery restrictions can still interrupt operation.
+- **Recover dropped connections:** retries only the user-selected BLE transport with
+  5/10/20/40/60 second delays (at most five attempts per outage). Configuration must
+  complete and match the originally verified node ID. Different identity or exhausted
+  retries stop the service. Manual DISCONNECT, notification STOP, app closure from
+  Recents, force-stop and reboot end the session. There is no boot receiver, sticky
+  restart, message retransmission, or automatic Bot Mode rearming after a drop.
+
+With the service active, connected monitoring and explicitly enabled Bot Mode can
+continue while switching apps or turning the screen off. Without it, backgrounding
+still disconnects the radio. Turning the service toggle OFF disconnects and cancels
+recovery. Real-phone screen-off, STOP, pairing, reconnect and power-use tests remain
+required; CI does not verify Android scheduling or radio interoperability.
+
+**MAP → OFFLINE MAP PACK** imports one local ZIP containing XYZ `z/x/y.png` tiles
+and `metadata.json` at the ZIP root. Metadata requires a name, attribution/license
+notice, center latitude/longitude and integer min/max zoom. The UI contains an example.
+Tiles are square PNG images of 256 or 512 pixels, zoom 0–19, with valid XYZ indices.
+The importer rejects path traversal, duplicate files, unexpected files, data-bearing
+ZIP directories and oversized input; limits are 128 MiB compressed, 256 MiB expanded,
+10,000 tiles and 12,000 total entries. A failed/cancelled import retains the previous
+pack; replacement uses staging and rollback. Pack attribution stays on the map.
+Missing areas remain blank, with no network fallback. Use legally obtained packs;
+Bastion does not bulk-download OpenStreetMap or other providers. MBTiles/PMTiles,
+GPX routes and provider region downloads remain future work.
+
+**TOOLS → CAPTURE RECEIVER POINT** requests a fresh phone location only while the
+app is visible. No background GPS permission or continuous GPS tracking is used.
+A fix must have reported accuracy within 100 m and is valid for two minutes. Hold
+still at that point. Received packets containing SNR/RSSI become measured receiver
+observations, at most one per sender/radio per 30 seconds; MQTT and stale/invalid
+readings are excluded. Positions from remote nodes are not substituted for the phone.
+The radio's reported SNR/RSSI can describe the last relay hop rather than the original
+sender, so these points are evidence of reception near a captured receiver fix, not
+proof of a direct link or continuous coverage. Unmeasured areas remain unknown.
+Disconnect and expired location fixes pause recording; reconnect never rearms it.
+
+Up to 2,000 points are retained for 30 days, separately from node, chat and bot
+history. MAP shows amber receiver-observation markers; tap one for readings and fix
+age/accuracy, or fit recorded points. CSV copying includes receiver coordinates,
+packet/record/fix timestamps, source/receiver node IDs and present signal readings.
+Clearing observations keeps node/chat/automation history and offline tiles.

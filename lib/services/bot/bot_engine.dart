@@ -153,7 +153,7 @@ class BotEngine {
       trigger = command;
       reply = command == '!help'
           ? 'Commands: !help, !status. Automated replies; cooldown applies.'
-          : 'Connected to !${message.radio.toRadixString(16).padLeft(8, '0')}; $nodeCount known nodes. Foreground bot active.';
+          : 'Connected to !${message.radio.toRadixString(16).padLeft(8, '0')}; $nodeCount known nodes. Bot active while connected.';
     } else {
       // Unknown commands never receive an away reply, limiting bot interactions.
       if (text.startsWith('!') || !settings.autoReply) {

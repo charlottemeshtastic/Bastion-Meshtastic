@@ -4,6 +4,8 @@ import '../../services/meshtastic/ble_radio_transport.dart';
 import '../../services/meshtastic/radio_session.dart';
 import '../../services/node_archive.dart';
 import 'node_detail_page.dart';
+import '../../services/connection/connection_manager.dart';
+import 'connection_panel.dart';
 
 class NodesPage extends StatelessWidget {
   const NodesPage({
@@ -11,14 +13,20 @@ class NodesPage extends StatelessWidget {
     required this.discovery,
     required this.session,
     this.archive,
+    this.connection,
   });
   final MeshtasticBleDiscovery discovery;
   final RadioSession session;
   final NodeArchive? archive;
+  final ConnectionManager? connection;
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: Listenable.merge([discovery, session]),
+    animation: Listenable.merge([
+      discovery,
+      session,
+      if (connection != null) connection!,
+    ]),
     builder: (context, _) {
       final busy =
           session.status == RadioStatus.connecting ||
@@ -50,7 +58,7 @@ class NodesPage extends StatelessWidget {
             ),
           if (ready || busy)
             OutlinedButton(
-              onPressed: session.disconnect,
+              onPressed: connection?.stop ?? session.disconnect,
               child: const Text('DISCONNECT'),
             ),
           FilledButton.icon(
@@ -97,10 +105,19 @@ class NodesPage extends StatelessWidget {
                       ? null
                       : () async {
                           await discovery.stop();
-                          await session.connect(BleRadioTransport(item.device));
+                          if (connection != null) {
+                            await connection!.connect(
+                              () => BleRadioTransport(item.device),
+                            );
+                          } else {
+                            await session.connect(
+                              BleRadioTransport(item.device),
+                            );
+                          }
                         },
                 ),
               ),
+          if (connection != null) ConnectionPanel(manager: connection!),
           const SizedBox(height: 20),
           Text(
             'MESH NODES (${session.nodes.length})',
@@ -162,7 +179,7 @@ class NodesPage extends StatelessWidget {
           const SizedBox(height: 16),
           const Text(
             'Development build · hardware validation pending. '
-            'Monitoring pauses when the app enters the background.',
+            'Screen-off monitoring requires the explicit Android connection service.',
             style: TextStyle(fontSize: 12, color: Colors.white54),
           ),
         ],

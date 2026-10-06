@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/meshtastic/radio_session.dart';
 import '../../services/diagnostics.dart';
+import '../../services/connection/connection_manager.dart';
 
 class RadioInfoPage extends StatelessWidget {
-  const RadioInfoPage({super.key, required this.session});
+  const RadioInfoPage({super.key, required this.session, this.connection});
   final RadioSession session;
+  final ConnectionManager? connection;
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: session,
+    animation: Listenable.merge([session, if (connection != null) connection!]),
     builder: (context, _) => ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -25,7 +27,7 @@ class RadioInfoPage extends StatelessWidget {
         ),
         const ListTile(
           title: Text('App version'),
-          subtitle: Text('Bastion 0.4.0 · development build'),
+          subtitle: Text('Bastion 0.5.0 · development build'),
         ),
         ListTile(
           title: const Text('Firmware'),
@@ -79,7 +81,7 @@ class RadioInfoPage extends StatelessWidget {
           subtitle: Text(
             session.readySince == null
                 ? 'Paused'
-                : 'Foreground session since ${session.readySince!.toLocal()}',
+                : 'Connected since ${session.readySince!.toLocal()} · ${connection?.screenOff == true ? 'screen-off service active' : 'foreground monitoring'}',
           ),
         ),
         const Text(
@@ -90,7 +92,13 @@ class RadioInfoPage extends StatelessWidget {
           label: const Text('COPY DIAGNOSTICS'),
           onPressed: () async {
             await Clipboard.setData(
-              ClipboardData(text: radioDiagnostics(session)),
+              ClipboardData(
+                text: radioDiagnostics(
+                  session,
+                  screenOff: connection?.screenOff ?? false,
+                  autoReconnect: connection?.autoReconnect ?? false,
+                ),
+              ),
             );
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(

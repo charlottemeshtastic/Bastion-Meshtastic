@@ -9,6 +9,7 @@ import '../../services/alert_notifications.dart';
 import 'rule_editor_page.dart';
 import '../../services/bot/bot_controller.dart';
 import 'bot_panel.dart';
+import '../../services/connection/connection_manager.dart';
 
 class AutomationsPage extends StatefulWidget {
   const AutomationsPage({
@@ -18,12 +19,14 @@ class AutomationsPage extends StatefulWidget {
     this.archive,
     this.notifications,
     this.bot,
+    this.connection,
   });
   final AutomationController? controller;
   final RadioSession? session;
   final NodeArchive? archive;
   final AlertNotifications? notifications;
   final BotController? bot;
+  final ConnectionManager? connection;
   @override
   State<AutomationsPage> createState() => _AutomationsPageState();
 }
@@ -157,6 +160,7 @@ class _AutomationsPageState extends State<AutomationsPage> {
       if (widget.session != null) widget.session!,
       if (widget.archive != null) widget.archive!,
       if (widget.notifications != null) widget.notifications!,
+      if (widget.connection != null) widget.connection!,
     ]),
     builder: (context, _) {
       final ready = widget.session?.status == RadioStatus.ready;
@@ -182,20 +186,24 @@ class _AutomationsPageState extends State<AutomationsPage> {
               padding: const EdgeInsets.all(16),
               child: Text(
                 ready
-                    ? 'Live monitoring while this app is open. Alerts are saved here. Silence checks require continuous monitoring. '
-                          'Battery rules use fresh received measurements. Background monitoring is not enabled.'
+                    ? 'Monitoring the connected radio. Alerts are saved here. Silence checks require continuous monitoring. '
+                          'Battery rules use fresh received measurements. Screen-off monitoring requires the NODES connection service.'
                     : 'Monitoring paused. Connect a radio in NODES for live alerts, or test rules with isolated simulation.',
               ),
             ),
           ),
           if (_controller.loading) const LinearProgressIndicator(),
-          if (widget.bot != null) BotPanel(bot: widget.bot!),
+          if (widget.bot != null)
+            BotPanel(
+              bot: widget.bot!,
+              screenOff: widget.connection?.screenOff ?? false,
+            ),
           if (widget.notifications != null) ...[
             SwitchListTile(
               title: const Text('Android notifications'),
               subtitle: Text(
                 widget.notifications!.supported
-                    ? 'Notify for new live alerts while this app is open and connected'
+                    ? 'Notify for new live alerts while connected, including the optional screen-off service'
                     : 'Available on Android',
               ),
               value: widget.notifications!.enabled,

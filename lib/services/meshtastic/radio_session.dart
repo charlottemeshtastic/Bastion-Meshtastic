@@ -335,6 +335,7 @@ class RadioSession extends ChangeNotifier {
           : null;
       final sample = TelemetrySample(
         radio: localNode!,
+        viaMqtt: packet.viaMqtt,
         node: packet.from,
         time: heard,
         battery: level != null && level <= 100 ? level : null,
