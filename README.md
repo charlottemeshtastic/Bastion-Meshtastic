@@ -3,7 +3,7 @@
 **Bastion Meshtastic** is an independent Android Flutter companion for Meshtastic, developed by **BackCountrySignal** with a field-focused interface for off-grid mesh communications.
 
 **Website:** [backcountrysignal.org](https://backcountrysignal.org/)  
-**Repository:** [backcountrysignal/Bastion-Meshtastic](https://github.com/backcountrysignal/Bastion-Meshtastic)
+**Repository:** [BastionMeshApp/Bastion-Meshtastic](https://github.com/BastionMeshApp/Bastion-Meshtastic)
 
 > **Development status:** Bastion Meshtastic is currently under active development. The present repository is an early application scaffold. BLE discovery and the core UI shell are the initial scope; BLE discovery alone does not establish a Meshtastic protocol session. Messaging, live node data, mapping, radio configuration, signing, and hardware QA must be completed and tested before the app should be relied upon for field or emergency communications.
 
@@ -100,7 +100,7 @@ Bastion uses a black/charcoal field-oriented visual identity with streamlined pr
 Clone the repository:
 
 ```sh
-git clone https://github.com/backcountrysignal/Bastion-Meshtastic.git
+git clone https://github.com/BastionMeshApp/Bastion-Meshtastic.git
 cd Bastion-Meshtastic
 ```
 
@@ -171,7 +171,7 @@ The official Meshtastic Android application and relevant upstream components hav
 
 Contributions, testing, bug reports, hardware compatibility reports, and feature ideas are welcome.
 
-Use the repository's [GitHub Issues](https://github.com/backcountrysignal/Bastion-Meshtastic/issues) section for:
+Use the repository's [GitHub Issues](https://github.com/BastionMeshApp/Bastion-Meshtastic/issues) section for:
 
 - Bug reports
 - Feature requests
