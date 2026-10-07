@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/meshtastic_ble_discovery.dart';
+import 'services/meshtastic_connection_controller.dart';
+import 'services/meshtastic_radio_coordinator.dart';
 
 void main() => runApp(const BastionMeshtasticApp());
 
@@ -36,6 +38,7 @@ class BastionShell extends StatefulWidget {
 class _BastionShellState extends State<BastionShell> {
   int index = 0;
   final ble = MeshtasticBleDiscovery();
+  final radio = MeshtasticRadioCoordinator();
   bool botMode = false;
   bool lowPowerMode = false;
   String awayReply = 'Bastion is monitoring the mesh. I will reply when available.';
@@ -49,6 +52,7 @@ class _BastionShellState extends State<BastionShell> {
   @override
   void dispose() {
     ble.dispose();
+    radio.dispose();
     super.dispose();
   }
 
@@ -63,16 +67,22 @@ class _BastionShellState extends State<BastionShell> {
       actions: [
         Padding(
           padding: const EdgeInsets.only(right: 12),
-          child: Chip(
-            avatar: const Icon(Icons.radio_button_checked, size: 16),
-            label: const Text('OFFLINE'),
-            side: BorderSide(color: Colors.white.withValues(alpha: .15)),
+          child: AnimatedBuilder(
+            animation: radio,
+            builder: (context, _) => Chip(
+              avatar: Icon(
+                radio.isReady ? Icons.bluetooth_connected : Icons.radio_button_checked,
+                size: 16,
+              ),
+              label: Text(_connectionLabel(radio.connection.state)),
+              side: BorderSide(color: Colors.white.withValues(alpha: .15)),
+            ),
           ),
         ),
       ],
     ),
     body: SafeArea(child: IndexedStack(index: index, children: [
-      _NodesPage(discovery: ble, onOpenTools: () => setState(() => index = 3)),
+      _NodesPage(discovery: ble, radio: radio, onOpenTools: () => setState(() => index = 3)),
       _ChatsPage(
         botMode: botMode,
         awayReply: awayReply,
@@ -98,13 +108,18 @@ class _BastionShellState extends State<BastionShell> {
 }
 
 class _NodesPage extends StatelessWidget {
-  const _NodesPage({required this.discovery, required this.onOpenTools});
+  const _NodesPage({
+    required this.discovery,
+    required this.radio,
+    required this.onOpenTools,
+  });
   final MeshtasticBleDiscovery discovery;
+  final MeshtasticRadioCoordinator radio;
   final VoidCallback onOpenTools;
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: discovery,
+    animation: Listenable.merge([discovery, radio]),
     builder: (context, _) => ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -114,9 +129,12 @@ class _NodesPage extends StatelessWidget {
         Row(children: [
           Expanded(child: _Stat(label: 'BLE DEVICES', value: '${discovery.results.length}')),
           const SizedBox(width: 10),
-          const Expanded(child: _Stat(label: 'MESH NODES', value: '—')),
+          Expanded(child: _Stat(label: 'MESH NODES', value: '${radio.nodes.length}')),
           const SizedBox(width: 10),
-          const Expanded(child: _Stat(label: 'STATUS', value: 'OFFLINE')),
+          Expanded(child: _Stat(
+            label: 'STATUS',
+            value: _connectionLabel(radio.connection.state),
+          )),
         ]),
         const SizedBox(height: 14),
         FilledButton.icon(
@@ -142,15 +160,57 @@ class _NodesPage extends StatelessWidget {
                 '${item.id}\n${item.advertisesMeshtastic ? 'Meshtastic service advertised' : _rssiLabel(item.rssi)}',
               ),
               isThreeLine: true,
-              trailing: Text('${item.rssi} dBm',
-                style: const TextStyle(color: BastionMeshtasticApp.cyan)),
+              trailing: radio.isReady && radio.connection.deviceName == item.name
+                  ? IconButton(
+                      tooltip: 'Disconnect',
+                      onPressed: radio.busy ? null : radio.disconnect,
+                      icon: const Icon(Icons.link_off),
+                    )
+                  : FilledButton(
+                      onPressed: radio.busy
+                          ? null
+                          : () async {
+                              try {
+                                await radio.connect(item);
+                              } catch (error) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Connection failed: $error')),
+                                  );
+                                }
+                              }
+                            },
+                      child: const Text('CONNECT'),
+                    ),
             )),
+        if (radio.connection.error != null)
+          _Notice(text: radio.connection.error!, icon: Icons.error_outline),
+        if (radio.nodes.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          const Text('LIVE MESH NODES',
+            style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: .8)),
+          const SizedBox(height: 6),
+          for (final node in radio.nodes)
+            Card(child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.cell_tower)),
+              title: Text(node.displayName),
+              subtitle: Text([
+                if (node.shortName?.isNotEmpty ?? false) node.shortName!,
+                node.id ?? '!${node.num.toRadixString(16).padLeft(8, '0')}',
+              ].join(' • ')),
+              trailing: node.hardwareModel == null
+                  ? null
+                  : Text('HW ${node.hardwareModel}'),
+            )),
+        ],
         const SizedBox(height: 10),
         OutlinedButton.icon(onPressed: onOpenTools,
           icon: const Icon(Icons.construction), label: const Text('OPEN FIELD TOOLS')),
-        const _Notice(
-          text: 'BLE discovery is operational. Radio session pairing is the next hardware step; mesh node data only appears after a verified session.',
-          icon: Icons.info_outline),
+        _Notice(
+          text: radio.isReady
+              ? 'Verified Meshtastic session ready. Live NodeDB updates will appear above.'
+              : 'Scan, then tap CONNECT on a radio. Bastion verifies the Meshtastic service, performs the PhoneAPI handshake, and synchronizes NodeDB before marking the session ready.',
+          icon: radio.isReady ? Icons.verified_outlined : Icons.info_outline),
       ],
     ),
   );
@@ -486,3 +546,14 @@ String _rssiLabel(int rssi) {
   if (rssi >= -90) return 'Weak Bluetooth signal';
   return 'Very weak Bluetooth signal';
 }
+
+
+String _connectionLabel(MeshtasticConnectionState state) => switch (state) {
+  MeshtasticConnectionState.disconnected => 'OFFLINE',
+  MeshtasticConnectionState.discovering => 'SCANNING',
+  MeshtasticConnectionState.connecting => 'CONNECTING',
+  MeshtasticConnectionState.connected => 'CONNECTED',
+  MeshtasticConnectionState.synchronizing => 'SYNCING',
+  MeshtasticConnectionState.ready => 'READY',
+  MeshtasticConnectionState.error => 'ERROR',
+};
