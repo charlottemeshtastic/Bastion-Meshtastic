@@ -31,7 +31,7 @@ class BastionNodeRecord {
 
   String get displayName => (longName?.isNotEmpty ?? false)
       ? longName!
-      : (id ?? '!'+num.toRadixString(16).padLeft(8, '0'));
+      : (id ?? '!${num.toRadixString(16).padLeft(8, '0')}');
 
   BastionNodeRecord copyWith({
     String? id, String? longName, String? shortName, int? hardwareModel,
