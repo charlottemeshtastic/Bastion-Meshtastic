@@ -268,7 +268,7 @@ class _ChatsPageState extends State<_ChatsPage> {
     for (final node in widget.radio.nodes) {
       if (node.num == nodeNum) return node.displayName;
     }
-    return '!' + nodeNum.toRadixString(16).padLeft(8, '0');
+    return '!\${nodeNum.toRadixString(16).padLeft(8, '0')}';
   }
 
   @override
@@ -325,7 +325,7 @@ class _ChatsPageState extends State<_ChatsPage> {
                   for (final node in widget.radio.nodes)
                     DropdownMenuItem(
                       value: node.num,
-                      child: Text('DM • ' + node.displayName),
+                      child: Text('DM • \${node.displayName}'),
                     ),
                 ],
                 onChanged: (value) {
@@ -345,7 +345,7 @@ class _ChatsPageState extends State<_ChatsPage> {
                 decoration: InputDecoration(
                   labelText: destination == 0xffffffff
                       ? 'Message Channel 0'
-                      : 'Message ' + _nodeName(destination),
+                      : 'Message \${_nodeName(destination)}',
                   border: const OutlineInputBorder(),
                 ),
                 onSubmitted: (_) => _send(),
@@ -395,11 +395,11 @@ class _ChatsPageState extends State<_ChatsPage> {
                 subtitle: Text(
                   message.direction == BastionMessageDirection.outgoing
                       ? (message.isBroadcast
-                          ? 'You → Channel ' + message.channel.toString()
-                          : 'You → ' + _nodeName(message.to))
+                          ? 'You → Channel \${message.channel}'
+                          : 'You → \${_nodeName(message.to)}')
                       : (message.isBroadcast
-                          ? _nodeName(message.from) + ' → Channel ' + message.channel.toString()
-                          : _nodeName(message.from) + ' → You'),
+                          ? '\${_nodeName(message.from)} → Channel \${message.channel}'
+                          : '\${_nodeName(message.from)} → You'),
                 ),
                 trailing: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
