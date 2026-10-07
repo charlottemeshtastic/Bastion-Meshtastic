@@ -14,3 +14,14 @@ if 'android.permission.BLUETOOTH_SCAN' not in s:
 s=s.replace('android:label="bastion_meshtastic"', 'android:label="Bastion Meshtastic"')
 p.write_text(s)
 print('Prepared Android manifest')
+
+# Universal BLE 2.x uses AGP 9's built-in Kotlin DSL on Android.
+# Flutter's generated project currently disables it, which leaves the plugin
+# without a Kotlin extension during Gradle configuration.
+gradle_properties = Path('android/gradle.properties')
+g = gradle_properties.read_text()
+g = g.replace('android.builtInKotlin=false', 'android.builtInKotlin=true')
+if 'android.builtInKotlin=' not in g:
+    g += '\\nandroid.builtInKotlin=true\\n'
+gradle_properties.write_text(g)
+print('Enabled AGP built-in Kotlin for BLE plugin compatibility')
