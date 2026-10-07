@@ -1,5 +1,5 @@
-name: bastion_meshtastic
-description: Independent Bastion companion for Meshtastic; early Android scaffold.
+name: bastion
+description: Independent field-mesh companion compatible with Meshtastic® firmware.
 publish_to: none
 version: 0.1.0+1
 
