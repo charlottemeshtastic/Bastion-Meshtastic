@@ -6,6 +6,7 @@ void main() {
     final controller = MeshtasticConnectionController();
 
     expect(controller.state, MeshtasticConnectionState.disconnected);
+    expect(controller.error, isNull);
     controller.beginDiscovery();
     expect(controller.state, MeshtasticConnectionState.discovering);
 
