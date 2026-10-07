@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:bastion_meshtastic/main.dart';
+import 'package:bastion/main.dart';
 
 void main() {
   testWidgets('Bastion exposes five functional field tabs', (tester) async {
-    await tester.pumpWidget(const BastionMeshtasticApp());
+    await tester.pumpWidget(const BastionApp());
     expect(find.text('MESHTASTIC EDITION'), findsOneWidget);
     expect(find.text('MESH COMMAND'), findsOneWidget);
 
