@@ -42,3 +42,13 @@ jobs:
           name: Bastion-Meshtastic-Development-APK
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14
+      - name: Email successful main build APK
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          APK_EMAIL_USERNAME: ${{ secrets.APK_EMAIL_USERNAME }}
+          APK_EMAIL_APP_PASSWORD: ${{ secrets.APK_EMAIL_APP_PASSWORD }}
+          APK_EMAIL_RECIPIENT: backcountrysignal@gmail.com
+          APK_PATH: build/app/outputs/flutter-apk/app-release.apk
+          BUILD_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BUILD_SHA: ${{ github.sha }}
+        run: python3 scripts/email_apk.py
