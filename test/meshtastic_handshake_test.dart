@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:bastion_meshtastic/services/meshtastic_connection_controller.dart';
-import 'package:bastion_meshtastic/services/meshtastic_handshake.dart';
-import 'package:bastion_meshtastic/services/meshtastic_phoneapi_codec.dart';
-import 'package:bastion_meshtastic/services/meshtastic_radio_session.dart';
-import 'package:bastion_meshtastic/services/meshtastic_radio_transport.dart';
+import 'package:bastion/services/meshtastic_connection_controller.dart';
+import 'package:bastion/services/meshtastic_handshake.dart';
+import 'package:bastion/services/meshtastic_phoneapi_codec.dart';
+import 'package:bastion/services/meshtastic_radio_session.dart';
+import 'package:bastion/services/meshtastic_radio_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class HandshakeTransport implements MeshtasticRadioTransport {
