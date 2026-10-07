@@ -191,3 +191,7 @@ Visit [backcountrysignal.org](https://backcountrysignal.org/) for project inform
 Review the license files included in this repository before using, modifying, or distributing the software.
 
 Any incorporated upstream Meshtastic code, protobuf definitions, libraries, assets, trademarks, or other third-party material remains subject to its respective license and usage requirements.
+
+## Build validation
+
+Pull requests and pushes are validated by the Android CI workflow with Flutter analysis, tests, an ARM64 release APK build, and a retained APK artifact.
