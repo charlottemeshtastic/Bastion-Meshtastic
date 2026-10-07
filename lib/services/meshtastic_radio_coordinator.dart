@@ -1,9 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 
-import 'bastion_chat_message.dart';
 import 'bastion_message_archive.dart';
 import 'meshtastic_ble_discovery.dart';
 import 'meshtastic_connection_controller.dart';
