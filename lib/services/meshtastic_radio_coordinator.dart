@@ -107,7 +107,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   void dispose() {
     connection.removeListener(_relayConnectionChange);
     unawaited(_shutdownSession(resetConnection: true));
-    connection.dispose();
+    // The session shutdown may still report its final disconnected state.
+    // Keep the child controller alive until that asynchronous cleanup ends.
     super.dispose();
   }
 }
