@@ -102,6 +102,13 @@ void main() {
     await transport.inbound.close();
   });
 
+  test('codec decodes local node number from MyNodeInfo', () {
+    final nodeNum = MeshtasticPhoneApiCodec.decodeMyNodeNum(
+      Uint8List.fromList([0x08, 0x96, 0x01]),
+    );
+    expect(nodeNum, 150);
+  });
+
   test('codec recognizes rebooted signal', () {
     final decoded = MeshtasticPhoneApiCodec.decodeFromRadio(
       Uint8List.fromList([0x40, 0x01]),
