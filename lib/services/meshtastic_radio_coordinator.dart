@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'bastion_message_archive.dart';
+import 'bastion_nodedex.dart';
 import 'meshtastic_ble_discovery.dart';
 import 'meshtastic_connection_controller.dart';
 import 'meshtastic_handshake.dart';
@@ -17,11 +18,13 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   MeshtasticRadioCoordinator() {
     connection.addListener(_relayConnectionChange);
     unawaited(_loadArchive());
+    unawaited(_loadNodeDex());
   }
 
   final MeshtasticConnectionController connection =
       MeshtasticConnectionController();
   final BastionMessageArchive _archive = BastionMessageArchive();
+  final BastionNodeDex _nodeDex = BastionNodeDex();
 
   MeshtasticRadioSession? _session;
   MeshtasticHandshake? _handshake;
@@ -47,6 +50,12 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   bool get busy => _busy;
   bool get isReady => connection.isReady;
   int? get localNodeNum => _localNodeNum;
+  List<BastionNodeRecord> get nodeDex => _nodeDex.records;
+
+  Future<void> _loadNodeDex() async {
+    await _nodeDex.load();
+    notifyListeners();
+  }
 
   Future<void> _loadArchive() async {
     final snapshot = await _archive.load();
@@ -123,6 +132,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       _syncMessageSnapshot(messaging);
       _nodeSubscription = nodeDatabase.changes.listen((nodes) {
         _nodes = nodes;
+        for (final node in nodes) {
+          unawaited(_nodeDex.observe(node));
+        }
         notifyListeners();
       });
       _messageSubscription = messaging.changes.listen((_) {
@@ -135,6 +147,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       await messaging.flush();
 
       _nodes = nodeDatabase.nodes;
+      for (final node in _nodes) {
+        await _nodeDex.observe(node);
+      }
       _syncMessageSnapshot(messaging);
       notifyListeners();
     } catch (_) {
