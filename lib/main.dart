@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/meshtastic_ble_discovery.dart';
 import 'services/meshtastic_connection_controller.dart';
+import 'services/meshtastic_messaging_service.dart';
 import 'services/meshtastic_radio_coordinator.dart';
 
 void main() => runApp(const BastionMeshtasticApp());
@@ -84,6 +85,7 @@ class _BastionShellState extends State<BastionShell> {
     body: SafeArea(child: IndexedStack(index: index, children: [
       _NodesPage(discovery: ble, radio: radio, onOpenTools: () => setState(() => index = 3)),
       _ChatsPage(
+        radio: radio,
         botMode: botMode,
         awayReply: awayReply,
         onBotModeChanged: (value) => setState(() => botMode = value),
@@ -217,59 +219,248 @@ class _NodesPage extends StatelessWidget {
 }
 
 class _ChatsPage extends StatefulWidget {
-  const _ChatsPage({required this.botMode, required this.awayReply,
-    required this.onBotModeChanged, required this.onAwayReplyChanged});
+  const _ChatsPage({
+    required this.radio,
+    required this.botMode,
+    required this.awayReply,
+    required this.onBotModeChanged,
+    required this.onAwayReplyChanged,
+  });
+  final MeshtasticRadioCoordinator radio;
   final bool botMode;
   final String awayReply;
   final ValueChanged<bool> onBotModeChanged;
   final ValueChanged<String> onAwayReplyChanged;
+
   @override
   State<_ChatsPage> createState() => _ChatsPageState();
 }
 
 class _ChatsPageState extends State<_ChatsPage> {
-  late final TextEditingController reply = TextEditingController(text: widget.awayReply);
-  @override
-  void dispose() { reply.dispose(); super.dispose(); }
+  late final TextEditingController reply =
+      TextEditingController(text: widget.awayReply);
+  final composer = TextEditingController();
+  int destination = 0xffffffff;
 
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(16),
-    children: [
-      const _Header(icon: Icons.forum_outlined, title: 'COMMS',
-        detail: 'Messaging controls and automated-response setup. Sending unlocks when a verified radio session is connected.'),
-      const SizedBox(height: 14),
-      Card(child: SwitchListTile(
-        secondary: const Icon(Icons.smart_toy_outlined, color: BastionMeshtasticApp.cyan),
-        title: const Text('BOT MODE', style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(widget.botMode
-          ? 'Armed locally — waiting for radio messaging' : 'Automatic replies are off'),
-        value: widget.botMode,
-        onChanged: widget.onBotModeChanged,
-      )),
-      Card(child: Padding(
+  void dispose() {
+    reply.dispose();
+    composer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send([String? quickText]) async {
+    final text = (quickText ?? composer.text).trim();
+    if (text.isEmpty) return;
+    try {
+      await widget.radio.sendText(text: text, destination: destination);
+      if (quickText == null) composer.clear();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Message not sent: $error')),
+        );
+      }
+    }
+  }
+
+  String _nodeName(int nodeNum) {
+    for (final node in widget.radio.nodes) {
+      if (node.num == nodeNum) return node.displayName;
+    }
+    return '!' + nodeNum.toRadixString(16).padLeft(8, '0');
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: widget.radio,
+    builder: (context, _) {
+      final messages = widget.radio.messages;
+      final connected = widget.radio.isReady;
+      return ListView(
         padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('AUTO-REPLY MESSAGE', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          TextField(
-            controller: reply, maxLines: 3, maxLength: 160,
-            decoration: const InputDecoration(border: OutlineInputBorder(),
-              hintText: 'Message to send while Bot Mode is active'),
-            onChanged: widget.onAwayReplyChanged,
+        children: [
+          _Header(
+            icon: Icons.forum_outlined,
+            title: 'COMMS',
+            detail: connected
+                ? 'Live Meshtastic messaging is ready.'
+                : 'Connect a radio to send. Queued messages send automatically when READY.',
           ),
-          const Wrap(spacing: 8, children: [
-            Chip(label: Text('!help')), Chip(label: Text('!status')),
-            Chip(label: Text('cooldown')), Chip(label: Text('loop guard')),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: _Stat(
+              label: 'LINK',
+              value: connected ? 'READY' : 'OFFLINE',
+            )),
+            const SizedBox(width: 10),
+            Expanded(child: _Stat(
+              label: 'MESSAGES',
+              value: messages.length.toString(),
+            )),
+            const SizedBox(width: 10),
+            Expanded(child: _Stat(
+              label: 'QUEUED',
+              value: widget.radio.pendingMessageCount.toString(),
+            )),
           ]),
-        ]),
-      )),
-      const _EmptyState(icon: Icons.mark_chat_unread_outlined,
-        title: 'No mesh conversations yet',
-        detail: 'Channels and direct messages will populate here after the radio transport is connected. Bot Mode settings above are already usable.'),
-    ],
+          const SizedBox(height: 12),
+          Card(child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('DESTINATION',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                initialValue: destination,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.cell_tower),
+                ),
+                items: [
+                  const DropdownMenuItem(
+                    value: 0xffffffff,
+                    child: Text('Channel 0 • Broadcast'),
+                  ),
+                  for (final node in widget.radio.nodes)
+                    DropdownMenuItem(
+                      value: node.num,
+                      child: Text('DM • ' + node.displayName),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => destination = value);
+                },
+              ),
+            ]),
+          )),
+          Card(child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(children: [
+              TextField(
+                controller: composer,
+                maxLength: 228,
+                minLines: 1,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  labelText: destination == 0xffffffff
+                      ? 'Message Channel 0'
+                      : 'Message ' + _nodeName(destination),
+                  border: const OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _send(),
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: connected ? _send : null,
+                  icon: const Icon(Icons.send),
+                  label: const Text('SEND'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(spacing: 7, runSpacing: 7, children: [
+                for (final quick in const [
+                  'Copy',
+                  'On my way',
+                  'Need assistance',
+                  'What is your position?',
+                ])
+                  ActionChip(
+                    label: Text(quick),
+                    onPressed: connected ? () => _send(quick) : null,
+                  ),
+              ]),
+            ]),
+          )),
+          if (messages.isEmpty)
+            const _EmptyState(
+              icon: Icons.mark_chat_unread_outlined,
+              title: 'No mesh messages yet',
+              detail: 'Incoming Channel 0 and direct messages will appear here after a radio is connected.',
+            )
+          else ...[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 8, 4, 4),
+              child: Text('MESSAGE TIMELINE',
+                style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: .8)),
+            ),
+            for (final message in messages.reversed.take(50))
+              Card(child: ListTile(
+                leading: CircleAvatar(
+                  child: Icon(message.direction == BastionMessageDirection.outgoing
+                      ? Icons.north_east : Icons.south_west),
+                ),
+                title: Text(message.text),
+                subtitle: Text(
+                  message.direction == BastionMessageDirection.outgoing
+                      ? (message.isBroadcast
+                          ? 'You → Channel ' + message.channel.toString()
+                          : 'You → ' + _nodeName(message.to))
+                      : (message.isBroadcast
+                          ? _nodeName(message.from) + ' → Channel ' + message.channel.toString()
+                          : _nodeName(message.from) + ' → You'),
+                ),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(_deliveryIcon(message.deliveryState), size: 18),
+                    const SizedBox(height: 3),
+                    Text(_deliveryLabel(message.deliveryState),
+                      style: const TextStyle(fontSize: 9)),
+                  ],
+                ),
+              )),
+          ],
+          const SizedBox(height: 10),
+          Card(child: SwitchListTile(
+            secondary: const Icon(Icons.smart_toy_outlined,
+              color: BastionMeshtasticApp.cyan),
+            title: const Text('BOT MODE',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(widget.botMode
+                ? 'Armed locally — command engine is next'
+                : 'Automatic replies are off'),
+            value: widget.botMode,
+            onChanged: widget.onBotModeChanged,
+          )),
+          Card(child: ExpansionTile(
+            leading: const Icon(Icons.tune, color: BastionMeshtasticApp.cyan),
+            title: const Text('BOT RESPONSE',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
+              TextField(
+                controller: reply,
+                maxLines: 3,
+                maxLength: 160,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'Message to send while Bot Mode is active',
+                ),
+                onChanged: widget.onAwayReplyChanged,
+              ),
+            ],
+          )),
+        ],
+      );
+    },
   );
 }
+
+IconData _deliveryIcon(BastionDeliveryState state) => switch (state) {
+  BastionDeliveryState.received => Icons.call_received,
+  BastionDeliveryState.queued => Icons.schedule,
+  BastionDeliveryState.sent => Icons.check,
+  BastionDeliveryState.failed => Icons.error_outline,
+};
+
+String _deliveryLabel(BastionDeliveryState state) => switch (state) {
+  BastionDeliveryState.received => 'RX',
+  BastionDeliveryState.queued => 'QUEUED',
+  BastionDeliveryState.sent => 'SENT',
+  BastionDeliveryState.failed => 'FAILED',
+};
 
 class _MapPage extends StatelessWidget {
   const _MapPage();
