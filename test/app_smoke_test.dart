@@ -3,14 +3,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:bastion_meshtastic/main.dart';
 
 void main() {
-  testWidgets('Bastion Meshtastic shell exposes five tabs', (tester) async {
+  testWidgets('Bastion exposes five functional field tabs', (tester) async {
     await tester.pumpWidget(const BastionMeshtasticApp());
     expect(find.text('MESHTASTIC EDITION'), findsOneWidget);
-    for (final name in ['NODES', 'CHATS', 'MAP', 'TOOLS', 'SETTINGS']) {
-      expect(find.text(name), findsWidgets);
-    }
+    expect(find.text('MESH COMMAND'), findsOneWidget);
+
     await tester.tap(find.byIcon(Icons.chat_bubble_outline).last);
     await tester.pumpAndSettle();
-    expect(find.textContaining('protobuf integration'), findsOneWidget);
+    expect(find.text('BOT MODE'), findsOneWidget);
+    expect(find.text('AUTO-REPLY MESSAGE'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.build_outlined).last);
+    await tester.pumpAndSettle();
+    expect(find.text('FIELD TOOLS'), findsWidgets);
+    expect(find.text('BATTERY RUNTIME'), findsOneWidget);
+    expect(find.text('RSSI FIELD REFERENCE'), findsOneWidget);
+    expect(find.text('DEPLOYMENT CHECKLIST'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.settings_outlined).last);
+    await tester.pumpAndSettle();
+    expect(find.text('Low-power field mode'), findsOneWidget);
   });
 }
