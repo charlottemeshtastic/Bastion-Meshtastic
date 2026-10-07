@@ -24,7 +24,7 @@ class MeshtasticHandshake {
   StreamSubscription<Uint8List>? _subscription;
   Completer<void>? _stage1;
   Completer<void>? _stage2;
-  int _heartbeatNonce = 1;
+  int _heartbeatNonce = 2;
 
   Future<void> synchronize() async {
     connection.beginSync();
