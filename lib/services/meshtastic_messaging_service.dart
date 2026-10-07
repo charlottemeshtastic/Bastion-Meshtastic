@@ -1,3 +1,5 @@
+export 'bastion_chat_message.dart';
+
 import 'dart:async';
 import 'dart:typed_data';
 
