@@ -10,10 +10,17 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.chat_bubble_outline).last);
     await tester.pumpAndSettle();
-    expect(find.text('BOT MODE'), findsOneWidget);
+    expect(find.text('COMMS'), findsOneWidget);
     expect(find.text('DESTINATION'), findsOneWidget);
     expect(find.text('Channel 0 • Broadcast'), findsOneWidget);
     expect(find.text('QUEUED'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('BOT MODE'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('BOT MODE'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.build_outlined).last);
     await tester.pumpAndSettle();
