@@ -1,76 +1,25 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'bastion_chat_message.dart';
+import 'bastion_message_archive.dart';
 import 'meshtastic_connection_controller.dart';
 import 'meshtastic_phoneapi_codec.dart';
 import 'meshtastic_radio_session.dart';
 import 'meshtastic_text_codec.dart';
 
-enum BastionMessageDirection { incoming, outgoing }
-enum BastionDeliveryState { received, queued, sent, failed }
-
-class BastionChatMessage {
-  const BastionChatMessage({
-    required this.packetId,
-    required this.from,
-    required this.to,
-    required this.channel,
-    required this.text,
-    required this.timestamp,
-    required this.direction,
-    required this.deliveryState,
-    this.rxSnr,
-  });
-
-  final int packetId;
-  final int from;
-  final int to;
-  final int channel;
-  final String text;
-  final DateTime timestamp;
-  final BastionMessageDirection direction;
-  final BastionDeliveryState deliveryState;
-  final double? rxSnr;
-
-  bool get isBroadcast => to == MeshtasticTextCodec.broadcastNode;
-
-  BastionChatMessage copyWith({BastionDeliveryState? deliveryState}) =>
-      BastionChatMessage(
-        packetId: packetId,
-        from: from,
-        to: to,
-        channel: channel,
-        text: text,
-        timestamp: timestamp,
-        direction: direction,
-        deliveryState: deliveryState ?? this.deliveryState,
-        rxSnr: rxSnr,
-      );
-}
-
-class PendingTextMessage {
-  const PendingTextMessage({
-    required this.text,
-    required this.destination,
-    required this.channel,
-    required this.packetId,
-  });
-  final String text;
-  final int destination;
-  final int channel;
-  final int packetId;
-}
-
-/// One messaging pipeline for channels, DMs, offline queueing and Bot Mode.
+/// One messaging pipeline for channels, DMs, durable offline queueing and Bot Mode.
 class MeshtasticMessagingService {
   MeshtasticMessagingService({
     required this.session,
     required this.connection,
+    this.archive,
     int Function()? packetIdFactory,
   }) : _packetIdFactory = packetIdFactory ?? _defaultPacketId;
 
   final MeshtasticRadioSession session;
   final MeshtasticConnectionController connection;
+  final BastionMessageArchive? archive;
   final int Function() _packetIdFactory;
 
   final StreamController<MeshtasticTextMessage> _incoming =
@@ -80,22 +29,48 @@ class MeshtasticMessagingService {
   final List<BastionChatMessage> _messages = [];
   final Set<String> _seen = {};
   final List<String> _seenOrder = [];
+  final Map<int, DateTime> _lastBotReply = {};
   StreamSubscription? _subscription;
   bool _flushing = false;
   bool _started = false;
+  bool _botEnabled = false;
+  String _botReply =
+      'Bastion is monitoring the mesh. I will reply when available.';
+  int? localNodeNum;
 
   Stream<MeshtasticTextMessage> get incoming => _incoming.stream;
   Stream<void> get changes => _changes.stream;
   List<PendingTextMessage> get pending => List.unmodifiable(_pending);
   List<BastionChatMessage> get messages => List.unmodifiable(_messages);
+  bool get botEnabled => _botEnabled;
 
   Future<void> start() async {
     if (!_started) {
       connection.addListener(_onConnectionChanged);
       _started = true;
     }
+    if (archive != null && _messages.isEmpty && _pending.isEmpty) {
+      final snapshot = await archive!.load();
+      _messages.addAll(snapshot.messages);
+      _pending.addAll(snapshot.pending);
+      _trimHistory();
+    }
     await _subscription?.cancel();
     _subscription = session.incomingEnvelopes.listen(_handleEnvelope);
+    _notify();
+  }
+
+  void configureBot({
+    required bool enabled,
+    required String reply,
+    int? nodeNum,
+  }) {
+    _botEnabled = enabled;
+    _botReply = reply.trim().isEmpty
+        ? 'Bastion is monitoring the mesh. I will reply when available.'
+        : reply.trim();
+    if (nodeNum != null) localNodeNum = nodeNum;
+    _notify();
   }
 
   Future<int> sendText({
@@ -118,7 +93,7 @@ class MeshtasticMessagingService {
 
     _messages.add(BastionChatMessage(
       packetId: packetId,
-      from: 0,
+      from: localNodeNum ?? 0,
       to: destination,
       channel: channel,
       text: trimmed,
@@ -180,7 +155,8 @@ class MeshtasticMessagingService {
   void _handleEnvelope(Uint8List bytes) {
     try {
       final envelope = MeshtasticPhoneApiCodec.decodeFromRadio(bytes);
-      if (envelope.kind != FromRadioPayloadKind.packet || envelope.payload == null) {
+      if (envelope.kind != FromRadioPayloadKind.packet ||
+          envelope.payload == null) {
         return;
       }
       final message = MeshtasticTextCodec.decodeMeshPacket(envelope.payload!);
@@ -191,6 +167,8 @@ class MeshtasticMessagingService {
       if (_seenOrder.length > 2048) {
         _seen.remove(_seenOrder.removeAt(0));
       }
+
+      if (localNodeNum != null && message.from == localNodeNum) return;
 
       _messages.add(BastionChatMessage(
         packetId: message.packetId,
@@ -208,9 +186,44 @@ class MeshtasticMessagingService {
       _trimHistory();
       _incoming.add(message);
       _notify();
+      unawaited(_maybeBotReply(message));
     } catch (error, stackTrace) {
       _incoming.addError(error, stackTrace);
     }
+  }
+
+  Future<void> _maybeBotReply(MeshtasticTextMessage message) async {
+    final ownNode = localNodeNum;
+    if (!_botEnabled || ownNode == null || !connection.isReady) return;
+    if (message.from == ownNode) return;
+
+    final text = message.text.trim();
+    final lower = text.toLowerCase();
+    if (lower.startsWith('bastion:')) return;
+
+    final directToUs = message.to == ownNode;
+    final isCommand = lower == '!help' || lower == '!status';
+    if (!directToUs && !isCommand) return;
+
+    final now = DateTime.now();
+    final last = _lastBotReply[message.from];
+    if (last != null && now.difference(last) < const Duration(seconds: 30)) {
+      return;
+    }
+    _lastBotReply[message.from] = now;
+
+    final response = switch (lower) {
+      '!help' => 'Bastion: commands !help !status',
+      '!status' => 'Bastion: online • radio READY',
+      _ => 'Bastion: $_botReply',
+    };
+    await sendText(
+      text: response,
+      destination: directToUs
+          ? message.from
+          : MeshtasticTextCodec.broadcastNode,
+      channel: message.channel,
+    );
   }
 
   void _onConnectionChanged() {
@@ -221,7 +234,9 @@ class MeshtasticMessagingService {
     final index = _messages.lastIndexWhere((m) =>
         m.packetId == packetId &&
         m.direction == BastionMessageDirection.outgoing);
-    if (index >= 0) _messages[index] = _messages[index].copyWith(deliveryState: state);
+    if (index >= 0) {
+      _messages[index] = _messages[index].copyWith(deliveryState: state);
+    }
     _notify();
   }
 
@@ -232,6 +247,9 @@ class MeshtasticMessagingService {
   }
 
   void _notify() {
+    if (archive != null) {
+      unawaited(archive!.save(messages: _messages, pending: _pending));
+    }
     if (!_changes.isClosed) _changes.add(null);
   }
 
@@ -239,6 +257,9 @@ class MeshtasticMessagingService {
     if (_started) connection.removeListener(_onConnectionChanged);
     _started = false;
     await _subscription?.cancel();
+    if (archive != null) {
+      await archive!.save(messages: _messages, pending: _pending);
+    }
     await _incoming.close();
     await _changes.close();
   }
