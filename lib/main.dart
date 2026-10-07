@@ -137,9 +137,10 @@ class _NodesPage extends StatelessWidget {
           for (final item in discovery.results)
             Card(child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.router)),
-              title: Text(item.advertisementData.advName.isNotEmpty
-                ? item.advertisementData.advName : 'Unnamed BLE device'),
-              subtitle: Text('${item.device.remoteId.str}\n${_rssiLabel(item.rssi)}'),
+              title: Text(item.name),
+              subtitle: Text(
+                '${item.id}\n${item.advertisesMeshtastic ? 'Meshtastic service advertised' : _rssiLabel(item.rssi)}',
+              ),
               isThreeLine: true,
               trailing: Text('${item.rssi} dBm',
                 style: const TextStyle(color: BastionMeshtasticApp.cyan)),
