@@ -4,16 +4,16 @@ import 'services/meshtastic_connection_controller.dart';
 import 'services/meshtastic_messaging_service.dart';
 import 'services/meshtastic_radio_coordinator.dart';
 
-void main() => runApp(const BastionMeshtasticApp());
+void main() => runApp(const BastionApp());
 
-class BastionMeshtasticApp extends StatelessWidget {
-  const BastionMeshtasticApp({super.key});
+class BastionApp extends StatelessWidget {
+  const BastionApp({super.key});
   static const signal = Color(0xFFC7A24A);
   static const panel = Color(0xFF151713);
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Bastion Meshtastic',
+    title: 'Bastion',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       useMaterial3: true,
@@ -62,8 +62,8 @@ class _BastionShellState extends State<BastionShell> {
     appBar: AppBar(
       title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('BASTION', style: TextStyle(fontWeight: FontWeight.w900,
-          color: BastionMeshtasticApp.signal, letterSpacing: 2)),
-        Text('MESHTASTIC EDITION', style: TextStyle(fontSize: 10, letterSpacing: 1.4)),
+          color: BastionApp.signal, letterSpacing: 2)),
+        Text('FIELD MESH', style: TextStyle(fontSize: 10, letterSpacing: 1.4)),
       ]),
       actions: [
         Padding(
@@ -421,7 +421,7 @@ class _ChatsPageState extends State<_ChatsPage> {
           const SizedBox(height: 10),
           Card(child: SwitchListTile(
             secondary: const Icon(Icons.smart_toy_outlined,
-              color: BastionMeshtasticApp.signal),
+              color: BastionApp.signal),
             title: const Text('BOT MODE',
               style: TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text(widget.botMode
@@ -431,7 +431,7 @@ class _ChatsPageState extends State<_ChatsPage> {
             onChanged: widget.onBotModeChanged,
           )),
           Card(child: ExpansionTile(
-            leading: const Icon(Icons.tune, color: BastionMeshtasticApp.signal),
+            leading: const Icon(Icons.tune, color: BastionApp.signal),
             title: const Text('BOT RESPONSE',
               style: TextStyle(fontWeight: FontWeight.bold)),
             childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -479,13 +479,13 @@ class _MapPage extends StatelessWidget {
       const SizedBox(height: 14),
       Container(
         height: 280,
-        decoration: BoxDecoration(color: BastionMeshtasticApp.panel,
+        decoration: BoxDecoration(color: BastionApp.panel,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: BastionMeshtasticApp.signal.withValues(alpha: .25))),
+          border: Border.all(color: BastionApp.signal.withValues(alpha: .25))),
         child: const Stack(children: [
           Center(child: Icon(Icons.terrain, size: 110, color: Colors.white10)),
           Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.location_off_outlined, size: 42, color: BastionMeshtasticApp.signal),
+            Icon(Icons.location_off_outlined, size: 42, color: BastionApp.signal),
             SizedBox(height: 10),
             Text('WAITING FOR POSITION DATA', style: TextStyle(fontWeight: FontWeight.bold)),
             SizedBox(height: 5),
@@ -538,7 +538,7 @@ class _ToolsPageState extends State<_ToolsPage> {
         detail: 'Practical utilities you can use before and during a deployment.'),
       const SizedBox(height: 14),
       Card(child: ExpansionTile(
-        leading: const Icon(Icons.battery_charging_full, color: BastionMeshtasticApp.signal),
+        leading: const Icon(Icons.battery_charging_full, color: BastionApp.signal),
         title: const Text('BATTERY RUNTIME', style: TextStyle(fontWeight: FontWeight.bold)),
         subtitle: const Text('Estimate runtime from capacity and average current'),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -558,11 +558,11 @@ class _ToolsPageState extends State<_ToolsPage> {
             Padding(padding: const EdgeInsets.only(top: 12),
               child: Text('Estimated runtime: ${runtime!.toStringAsFixed(1)} hours',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold,
-                  color: BastionMeshtasticApp.signal))),
+                  color: BastionApp.signal))),
         ],
       )),
       const Card(child: ExpansionTile(
-        leading: Icon(Icons.signal_cellular_alt, color: BastionMeshtasticApp.signal),
+        leading: Icon(Icons.signal_cellular_alt, color: BastionApp.signal),
         title: Text('RSSI FIELD REFERENCE', style: TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text('Quick Bluetooth signal-strength guide'),
         childrenPadding: EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -576,7 +576,7 @@ class _ToolsPageState extends State<_ToolsPage> {
       )),
       Card(child: ExpansionTile(
         initiallyExpanded: true,
-        leading: const Icon(Icons.checklist, color: BastionMeshtasticApp.signal),
+        leading: const Icon(Icons.checklist, color: BastionApp.signal),
         title: const Text('DEPLOYMENT CHECKLIST', style: TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text('${checked.length}/${checklist.length} ready'),
         children: [
@@ -590,7 +590,7 @@ class _ToolsPageState extends State<_ToolsPage> {
         ],
       )),
       Card(child: ListTile(
-        leading: const Icon(Icons.bluetooth_searching, color: BastionMeshtasticApp.signal),
+        leading: const Icon(Icons.bluetooth_searching, color: BastionApp.signal),
         title: const Text('RADIO SCANNER', style: TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text('${widget.discovery.results.length} BLE devices currently discovered'),
         trailing: const Icon(Icons.chevron_right),
@@ -627,12 +627,19 @@ class _SettingsPage extends StatelessWidget {
       const Card(child: ListTile(
         leading: Icon(Icons.security_outlined), title: Text('Safety mode'),
         subtitle: Text('No unverified device is treated as a mesh node'),
-        trailing: Icon(Icons.verified_user_outlined, color: BastionMeshtasticApp.signal))),
+        trailing: Icon(Icons.verified_user_outlined, color: BastionApp.signal))),
       const Card(child: ListTile(
-        leading: Icon(Icons.info_outline), title: Text('Bastion Meshtastic'),
-        subtitle: Text('Development build • Independent Meshtastic companion'))),
+        leading: Icon(Icons.info_outline), title: Text('Bastion'),
+        subtitle: Text('Development build • Independent mesh companion'))),
+      const Card(child: ListTile(
+        leading: Icon(Icons.gavel_outlined),
+        title: Text('Trademark & compatibility'),
+        subtitle: Text(
+          'Compatible with Meshtastic® firmware. Meshtastic® is a registered trademark of Meshtastic LLC. Meshtastic software components are released under various licenses, see GitHub for details. No warranty is provided - use at your own risk.\\n\\nBastion is independently developed and is not affiliated with, sponsored by, or endorsed by Meshtastic LLC.',
+        ),
+      )),
       const _Notice(
-        text: 'Bastion is an independent companion project and is not an official Meshtastic application. Do not rely on this development build for emergency communication.',
+        text: 'Bastion is an independent project compatible with Meshtastic® firmware. It is not affiliated with, sponsored by, or endorsed by Meshtastic LLC. Do not rely on this development build as a sole method of emergency communication.',
         icon: Icons.shield_outlined),
     ],
   );
@@ -646,15 +653,15 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(color: BastionMeshtasticApp.panel,
+    decoration: BoxDecoration(color: BastionApp.panel,
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: BastionMeshtasticApp.signal.withValues(alpha: .4))),
+      border: Border.all(color: BastionApp.signal.withValues(alpha: .4))),
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(icon, color: BastionMeshtasticApp.signal, size: 30),
+      Icon(icon, color: BastionApp.signal, size: 30),
       const SizedBox(width: 14),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900,
-          color: BastionMeshtasticApp.signal, letterSpacing: .8)),
+          color: BastionApp.signal, letterSpacing: .8)),
         const SizedBox(height: 6),
         Text(detail, style: const TextStyle(height: 1.4, color: Colors.white70)),
       ])),
@@ -669,11 +676,11 @@ class _Stat extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-    decoration: BoxDecoration(color: BastionMeshtasticApp.panel,
+    decoration: BoxDecoration(color: BastionApp.panel,
       borderRadius: BorderRadius.circular(12)),
     child: Column(children: [
       Text(value, style: const TextStyle(fontWeight: FontWeight.w900,
-        fontSize: 17, color: BastionMeshtasticApp.signal)),
+        fontSize: 17, color: BastionApp.signal)),
       const SizedBox(height: 4),
       Text(label, textAlign: TextAlign.center,
         style: const TextStyle(fontSize: 9, color: Colors.white54, letterSpacing: .6)),
@@ -731,7 +738,7 @@ class _ReferenceRow extends StatelessWidget {
     child: Row(children: [
       SizedBox(width: 80, child: Text(value,
         style: const TextStyle(fontWeight: FontWeight.bold,
-          color: BastionMeshtasticApp.signal))),
+          color: BastionApp.signal))),
       Expanded(child: Text(label)),
     ]),
   );
