@@ -17,7 +17,7 @@ void main() {
     ]);
 
     final node = MeshtasticNodeInfoCodec.decode(nodeInfo);
-    expect(node.num, 238250924);
+    expect(node.num, 23817132);
     expect(node.id, '!1234abcd');
     expect(node.longName, 'Ridge Relay');
     expect(node.shortName, 'RR');
