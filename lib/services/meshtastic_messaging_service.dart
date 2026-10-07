@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'meshtastic_connection_controller.dart';
 import 'meshtastic_phoneapi_codec.dart';
@@ -87,7 +88,7 @@ class MeshtasticMessagingService {
     ));
   }
 
-  void _handleEnvelope(dynamic bytes) {
+  void _handleEnvelope(Uint8List bytes) {
     try {
       final envelope = MeshtasticPhoneApiCodec.decodeFromRadio(bytes);
       if (envelope.kind != FromRadioPayloadKind.packet || envelope.payload == null) {
