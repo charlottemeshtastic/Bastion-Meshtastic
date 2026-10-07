@@ -88,8 +88,14 @@ class _BastionShellState extends State<BastionShell> {
         radio: radio,
         botMode: botMode,
         awayReply: awayReply,
-        onBotModeChanged: (value) => setState(() => botMode = value),
-        onAwayReplyChanged: (value) => setState(() => awayReply = value),
+        onBotModeChanged: (value) {
+          setState(() => botMode = value);
+          radio.configureBot(enabled: value, reply: awayReply);
+        },
+        onAwayReplyChanged: (value) {
+          setState(() => awayReply = value);
+          radio.configureBot(enabled: botMode, reply: value);
+        },
       ),
       const _MapPage(),
       _ToolsPage(discovery: ble),
@@ -285,7 +291,7 @@ class _ChatsPageState extends State<_ChatsPage> {
             title: 'COMMS',
             detail: connected
                 ? 'Live Meshtastic messaging is ready.'
-                : 'Connect a radio to send. Queued messages send automatically when READY.',
+                : 'Messages can be queued offline and send automatically when the radio reaches READY.',
           ),
           const SizedBox(height: 12),
           Row(children: [
@@ -353,7 +359,7 @@ class _ChatsPageState extends State<_ChatsPage> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: connected ? _send : null,
+                  onPressed: _send,
                   icon: const Icon(Icons.send),
                   label: const Text('SEND'),
                 ),
@@ -368,7 +374,7 @@ class _ChatsPageState extends State<_ChatsPage> {
                 ])
                   ActionChip(
                     label: Text(quick),
-                    onPressed: connected ? () => _send(quick) : null,
+                    onPressed: () => _send(quick),
                   ),
               ]),
             ]),
@@ -419,7 +425,7 @@ class _ChatsPageState extends State<_ChatsPage> {
             title: const Text('BOT MODE',
               style: TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text(widget.botMode
-                ? 'Armed locally — command engine is next'
+                ? 'ACTIVE • DM auto-reply + !help / !status • 30s loop guard'
                 : 'Automatic replies are off'),
             value: widget.botMode,
             onChanged: widget.onBotModeChanged,
