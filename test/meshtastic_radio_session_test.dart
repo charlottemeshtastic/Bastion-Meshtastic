@@ -63,7 +63,7 @@ void main() {
     );
 
     expect(
-      () => session.send(Uint8List.fromList([1])),
+      session.send(Uint8List.fromList([1])),
       throwsA(isA<StateError>()),
     );
     await session.dispose();
