@@ -17,15 +17,18 @@ class BastionArchiveSnapshot {
 /// Small durable archive for COMMS history and the outbound offline queue.
 class BastionMessageArchive {
   BastionMessageArchive({SharedPreferencesAsync? preferences})
-      : _preferences = preferences ?? SharedPreferencesAsync();
+      : _preferences = preferences;
 
   static const _key = 'bastion.comms.archive.v1';
-  final SharedPreferencesAsync _preferences;
+  SharedPreferencesAsync? _preferences;
+
+  SharedPreferencesAsync get _store =>
+      _preferences ??= SharedPreferencesAsync();
 
   Future<BastionArchiveSnapshot> load() async {
-    final raw = await _preferences.getString(_key);
-    if (raw == null || raw.isEmpty) return const BastionArchiveSnapshot();
     try {
+      final raw = await _store.getString(_key);
+      if (raw == null || raw.isEmpty) return const BastionArchiveSnapshot();
       final root = jsonDecode(raw) as Map<String, Object?>;
       final messages = (root['messages'] as List<Object?>? ?? const [])
           .whereType<Map<String, Object?>>()
@@ -44,12 +47,16 @@ class BastionMessageArchive {
   Future<void> save({
     required List<BastionChatMessage> messages,
     required List<PendingTextMessage> pending,
-  }) {
-    final encoded = jsonEncode({
-      'messages': messages.takeLast(500).map((m) => m.toJson()).toList(),
-      'pending': pending.map((m) => m.toJson()).toList(),
-    });
-    return _preferences.setString(_key, encoded);
+  }) async {
+    try {
+      final encoded = jsonEncode({
+        'messages': messages.takeLast(500).map((m) => m.toJson()).toList(),
+        'pending': pending.map((m) => m.toJson()).toList(),
+      });
+      await _store.setString(_key, encoded);
+    } catch (_) {
+      // Persistence must never prevent COMMS or the app shell from operating.
+    }
   }
 }
 
