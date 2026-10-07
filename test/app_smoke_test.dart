@@ -11,7 +11,9 @@ void main() {
     await tester.tap(find.byIcon(Icons.chat_bubble_outline).last);
     await tester.pumpAndSettle();
     expect(find.text('BOT MODE'), findsOneWidget);
-    expect(find.text('AUTO-REPLY MESSAGE'), findsOneWidget);
+    expect(find.text('DESTINATION'), findsOneWidget);
+    expect(find.text('Channel 0 • Broadcast'), findsOneWidget);
+    expect(find.text('QUEUED'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.build_outlined).last);
     await tester.pumpAndSettle();
