@@ -25,9 +25,11 @@ class MeshtasticHandshake {
   Completer<void>? _stage1;
   Completer<void>? _stage2;
   int _heartbeatNonce = 2;
+  String stage = 'idle';
 
   Future<void> synchronize() async {
     connection.beginSync();
+    stage = 'initial configuration';
     _stage1 = Completer<void>();
     _stage2 = Completer<void>();
 
@@ -42,7 +44,9 @@ class MeshtasticHandshake {
 
     try {
       await session.send(MeshtasticPhoneApiCodec.wantConfig(configNonce));
-      await _stage1!.future.timeout(timeout);
+      await _stage1!.future.timeout(timeout,
+        onTimeout: () => throw TimeoutException('No configComplete(69420) during $stage', timeout));
+      stage = 'node database synchronization';
 
       await Future<void>.delayed(settleDelay);
       await session.send(
@@ -51,7 +55,9 @@ class MeshtasticHandshake {
       await Future<void>.delayed(settleDelay);
 
       await session.send(MeshtasticPhoneApiCodec.wantConfig(nodeDbNonce));
-      await _stage2!.future.timeout(timeout);
+      await _stage2!.future.timeout(timeout,
+        onTimeout: () => throw TimeoutException('No configComplete(69421) during $stage', timeout));
+      stage = 'ready';
       connection.markReady();
     } catch (error) {
       connection.fail(error);
