@@ -323,7 +323,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   final settings = fields.$2[2];
   if (index == null || index < 0 || index > 7 || settings == null) return null;
   final settingsFields = _protoFields(settings);
-  final nameBytes = settingsFields.$2[2];
+  final nameBytes = settingsFields.$2[3];
   final name = nameBytes == null ? '' : utf8.decode(nameBytes, allowMalformed: true).trim();
   return (index, name.isEmpty ? 'Channel $index' : name);
 }
