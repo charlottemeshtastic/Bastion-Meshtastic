@@ -211,6 +211,28 @@ class _NodesPage extends StatelessWidget {
                   : Text('HW ${node.hardwareModel}'),
             )),
         ],
+        if (radio.isReady) ...[
+          const SizedBox(height: 14),
+          const Text('MESH HEALTH • LIVE SESSION',
+            style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: .8)),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: _Stat(label: 'KNOWN NODES',
+              value: '${radio.nodes.length}')),
+            const SizedBox(width: 10),
+            Expanded(child: _Stat(label: 'MESSAGES',
+              value: '${radio.messages.length}')),
+            const SizedBox(width: 10),
+            Expanded(child: _Stat(label: 'PENDING',
+              value: '${radio.pendingMessageCount}')),
+          ]),
+          const SizedBox(height: 6),
+          const _Notice(
+            text: 'These are observed counts, not RF signal-quality measurements. '
+              'RSSI/SNR history and packet-delivery statistics require additional telemetry.',
+            icon: Icons.monitor_heart_outlined,
+          ),
+        ],
         if (radio.nodeDex.isNotEmpty) ...[
           const SizedBox(height: 18),
           const Text('NODEDEX • SAVED ENCOUNTERS',
