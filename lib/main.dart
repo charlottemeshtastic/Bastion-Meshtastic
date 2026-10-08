@@ -771,9 +771,13 @@ class _SettingsPage extends StatelessWidget {
               isThreeLine: true,
             ),
             ListTile(title: const Text('Device & LoRa'),
-              subtitle: Text('${radio.radioConfigCount} configuration messages received • editing coming soon')),
+              subtitle: Text(radio.loraSettings.isEmpty
+                ? '${radio.radioConfigCount} configuration messages • LoRa values unavailable'
+                : radio.loraSettings.join('\n'))),
             ListTile(title: const Text('Channels'),
-              subtitle: Text('${radio.channelConfigCount} channel messages received • editing coming soon')),
+              subtitle: Text(radio.channelSettings.isEmpty
+                ? '${radio.channelConfigCount} channel messages • details unavailable'
+                : radio.channelSettings.join('\n'))),
             ListTile(title: const Text('Modules'),
               subtitle: Text('${radio.moduleConfigCount} module messages received • editing coming soon')),
             const Padding(
