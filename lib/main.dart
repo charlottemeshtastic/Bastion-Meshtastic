@@ -387,8 +387,12 @@ class _ChatsPageState extends State<_ChatsPage> {
       final visibleMessages = messages.reversed.where((message) {
         if (search.isNotEmpty &&
             !message.text.toLowerCase().contains(search) &&
-            !_nodeName(message.from).toLowerCase().contains(search)) return false;
-        if (!onlyCurrentConversation) return true;
+            !_nodeName(message.from).toLowerCase().contains(search)) {
+          return false;
+        }
+        if (!onlyCurrentConversation) {
+          return true;
+        }
         if (destination == 0xffffffff) {
           return message.isBroadcast && message.channel == channel;
         }
