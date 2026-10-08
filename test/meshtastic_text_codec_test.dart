@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:bastion_meshtastic/services/meshtastic_text_codec.dart';
+import 'package:bastion/services/meshtastic_text_codec.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -55,6 +55,22 @@ abstract final class MeshtasticPhoneApiCodec {
 
   static Uint8List disconnect() => Uint8List.fromList([0x20, 0x01]);
 
+  /// Decodes MyNodeInfo.my_node_num (field 1) from the config stream.
+  static int? decodeMyNodeNum(Uint8List bytes) {
+    var offset = 0;
+    while (offset < bytes.length) {
+      final key = _readVarint(bytes, offset);
+      offset = key.next;
+      final field = key.value >> 3;
+      final wireType = key.value & 0x07;
+      if (field == 1 && wireType == 0) {
+        return _readVarint(bytes, offset).value;
+      }
+      offset = _skipField(bytes, offset, wireType);
+    }
+    return null;
+  }
+
   static FromRadioEnvelope decodeFromRadio(Uint8List bytes) {
     var offset = 0;
     var id = 0;
