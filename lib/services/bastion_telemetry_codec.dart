@@ -56,8 +56,8 @@ abstract final class BastionTelemetryCodec {
 
 /// Strict protobuf wire reader: rejects malformed lengths and unknown wire types.
 class _Fields {
-  _Fields(this.bytes);
-  final Uint8List bytes;
+  _Fields(this.source);
+  final Uint8List source;
 
   int? varint(int field) => _read(field, 0) as int?;
   int? fixed32(int field) => _read(field, 5) as int?;
@@ -73,7 +73,7 @@ class _Fields {
   Object? _read(int wanted, int wantedWire) {
     var offset = 0;
     Object? found;
-    while (offset < bytes.length) {
+    while (offset < source.length) {
       final key = _varint(offset);
       offset = key.$2;
       final field = key.$1 >> 3;
@@ -93,11 +93,11 @@ class _Fields {
           final length = _varint(offset);
           offset = length.$2;
           _require(offset, length.$1);
-          value = Uint8List.sublistView(bytes, offset, offset + length.$1);
+          value = Uint8List.sublistView(source, offset, offset + length.$1);
           offset += length.$1;
         case 5:
           _require(offset, 4);
-          value = ByteData.sublistView(bytes, offset, offset + 4)
+          value = ByteData.sublistView(source, offset, offset + 4)
               .getUint32(0, Endian.little);
           offset += 4;
         default:
@@ -112,8 +112,8 @@ class _Fields {
     var value = 0;
     var shift = 0;
     var offset = start;
-    while (offset < bytes.length && shift < 64) {
-      final byte = bytes[offset++];
+    while (offset < source.length && shift < 64) {
+      final byte = source[offset++];
       value |= (byte & 0x7f) << shift;
       if (byte & 0x80 == 0) return (value, offset);
       shift += 7;
@@ -122,7 +122,7 @@ class _Fields {
   }
 
   void _require(int offset, int length) {
-    if (length < 0 || offset + length > bytes.length) {
+    if (length < 0 || offset + length > source.length) {
       throw const FormatException('Truncated protobuf field');
     }
   }
