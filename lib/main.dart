@@ -341,12 +341,16 @@ class _ChatsPageState extends State<_ChatsPage> {
   late final TextEditingController reply =
       TextEditingController(text: widget.awayReply);
   final composer = TextEditingController();
+  final historySearch = TextEditingController();
   int destination = 0xffffffff;
+  int channel = 0;
+  bool onlyCurrentConversation = false;
 
   @override
   void dispose() {
     reply.dispose();
     composer.dispose();
+    historySearch.dispose();
     super.dispose();
   }
 
@@ -354,7 +358,8 @@ class _ChatsPageState extends State<_ChatsPage> {
     final text = (quickText ?? composer.text).trim();
     if (text.isEmpty) return;
     try {
-      await widget.radio.sendText(text: text, destination: destination);
+      await widget.radio.sendText(text: text, destination: destination,
+        channel: destination == 0xffffffff ? channel : 0);
       if (quickText == null) composer.clear();
     } catch (error) {
       if (mounted) {
@@ -378,6 +383,18 @@ class _ChatsPageState extends State<_ChatsPage> {
     builder: (context, _) {
       final messages = widget.radio.messages;
       final connected = widget.radio.isReady;
+      final search = historySearch.text.trim().toLowerCase();
+      final visibleMessages = messages.reversed.where((message) {
+        if (search.isNotEmpty &&
+            !message.text.toLowerCase().contains(search) &&
+            !_nodeName(message.from).toLowerCase().contains(search)) return false;
+        if (!onlyCurrentConversation) return true;
+        if (destination == 0xffffffff) {
+          return message.isBroadcast && message.channel == channel;
+        }
+        return !message.isBroadcast &&
+            (message.to == destination || message.from == destination);
+      }).take(50).toList();
       return ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -421,7 +438,7 @@ class _ChatsPageState extends State<_ChatsPage> {
                 items: [
                   const DropdownMenuItem(
                     value: 0xffffffff,
-                    child: Text('Channel 0 • Broadcast'),
+                    child: Text('Channel • Broadcast'),
                   ),
                   for (final node in widget.radio.nodes)
                     DropdownMenuItem(
@@ -433,6 +450,27 @@ class _ChatsPageState extends State<_ChatsPage> {
                   if (value != null) setState(() => destination = value);
                 },
               ),
+              if (destination == 0xffffffff) ...[
+                const SizedBox(height: 10),
+                DropdownButtonFormField<int>(
+                  initialValue: channel,
+                  decoration: const InputDecoration(
+                    labelText: 'Configured channel slot',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (var i = 0; i < 8; i++)
+                      DropdownMenuItem(value: i, child: Text('Channel $i')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setState(() => channel = value);
+                  },
+                ),
+                const SizedBox(height: 5),
+                const Text('Select a channel already configured on your radio. '
+                    'Channel keys cannot be edited here yet.',
+                  style: TextStyle(fontSize: 11, color: Colors.white60)),
+              ],
             ]),
           )),
           Card(child: Padding(
@@ -445,7 +483,7 @@ class _ChatsPageState extends State<_ChatsPage> {
                 maxLines: 4,
                 decoration: InputDecoration(
                   labelText: destination == 0xffffffff
-                      ? 'Message Channel 0'
+                      ? 'Message Channel $channel'
                       : 'Message ${_nodeName(destination)}',
                   border: const OutlineInputBorder(),
                 ),
@@ -486,7 +524,31 @@ class _ChatsPageState extends State<_ChatsPage> {
               child: Text('MESSAGE TIMELINE',
                 style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: .8)),
             ),
-            for (final message in messages.reversed.take(50))
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Column(children: [
+                TextField(
+                  controller: historySearch,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    hintText: 'Search message history',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Current conversation only',
+                    style: TextStyle(fontSize: 13)),
+                  value: onlyCurrentConversation,
+                  onChanged: (value) => setState(() => onlyCurrentConversation = value),
+                ),
+              ]),
+            ),
+            if (visibleMessages.isEmpty)
+              const ListTile(title: Text('No matching messages')),
+            for (final message in visibleMessages)
               Card(child: ListTile(
                 leading: CircleAvatar(
                   child: Icon(message.direction == BastionMessageDirection.outgoing
