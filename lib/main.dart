@@ -760,6 +760,16 @@ class _SettingsPage extends StatelessWidget {
             ? 'Radio connected • configuration inspection'
             : 'Connect to a radio to inspect its settings'),
           children: [
+            ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('Node identity'),
+              subtitle: Text(radio.localNode == null
+                ? 'Waiting for this radio\'s node information'
+                : 'Long: ${radio.localNode!.longName ?? 'Not reported'}\n'
+                  'Short: ${radio.localNode!.shortName ?? 'Not reported'}\n'
+                  'ID: ${radio.localNode!.id ?? 'Not reported'}'),
+              isThreeLine: true,
+            ),
             ListTile(title: const Text('Device & LoRa'),
               subtitle: Text('${radio.radioConfigCount} configuration messages received • editing coming soon')),
             ListTile(title: const Text('Channels'),
