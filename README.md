@@ -1,113 +1,79 @@
-# Bastion — Meshtastic Edition
+# Bastion
 
-**Bastion Meshtastic** is an independent Android Flutter companion for Meshtastic, developed by **BackCountrySignal** with a field-focused interface for off-grid mesh communications.
+**Bastion** is an independent Android field-mesh application developed by **BackCountrySignal**. It interoperates with devices running Meshtastic® firmware while maintaining its own name, icon, interface, and project identity.
 
-**Website:** [backcountrysignal.org](https://backcountrysignal.org/)  
-**Repository:** [BastionMeshApp/Bastion-Meshtastic](https://github.com/BastionMeshApp/Bastion-Meshtastic)
+> **Independent project:** Bastion is not affiliated with, sponsored by, endorsed by, or an official application of Meshtastic LLC.
 
-> **Development status:** Bastion Meshtastic is currently under active development. The present repository is an early application scaffold. BLE discovery and the core UI shell are the initial scope; BLE discovery alone does not establish a Meshtastic protocol session. Messaging, live node data, mapping, radio configuration, signing, and hardware QA must be completed and tested before the app should be relied upon for field or emergency communications.
+## Development status
+
+Bastion is under active development. BLE transport, PhoneAPI synchronization, NodeDB, channel/direct messaging, offline queueing, and field tooling are being developed and tested. Do not rely on a development build as the sole method of emergency communication.
 
 ## Mission
 
-Bastion is being built as a clean, capable Meshtastic client for backcountry users, community mesh networks, radio enthusiasts, preparedness, field deployments, and emergency communications.
-
-The project emphasizes:
-
-- Reliable off-grid operation
-- Field-friendly controls and navigation
-- Clear mesh and radio diagnostics
-- Low-distraction visual design
-- Offline-capable mapping and tools
-- Network visibility and node intelligence
-- Privacy-conscious operation
-- Open-source development
-- Useful automation without unnecessary complexity
+Bastion is designed for backcountry users, community mesh networks, radio enthusiasts, preparedness, field deployments, and emergency-communications support. The project emphasizes reliable offline operation, field-friendly controls, radio diagnostics, network visibility, privacy-conscious operation, and useful automation.
 
 ## Interface
 
-Bastion uses a black/charcoal field-oriented visual identity with streamlined primary navigation:
+Bastion uses its own black/charcoal field-oriented identity with restrained signal accents. Primary navigation is:
 
-- **NODES** — discovered nodes, status, telemetry, signal information, and network intelligence
-- **CHATS** — direct messages and channel communications
-- **MAP** — node locations, field information, coverage, and future offline mapping
-- **TOOLS** — diagnostics, traceroute, radio and field utilities
-- **SETTINGS** — application, connection, radio, privacy, and appearance controls
+- **NODES** — discovered radios, nodes, status, telemetry, signal information, and network intelligence
+- **CHATS** — direct and channel communications
+- **MAP** — node locations, field information, coverage, and offline mapping
+- **TOOLS** — diagnostics, traceroute, radio, and field utilities
+- **SETTINGS** — application, connection, radio, privacy, appearance, and legal notices
 
-## Development Roadmap
+## Compatibility
 
-### 1. Foundation
+Bastion implements interoperability with the public protocol used by Meshtastic® firmware. Technical references to Meshtastic® in source code and documentation describe compatibility or protocol behavior; they are not Bastion product branding.
 
-- Android Flutter application foundation
-- Bastion branding and visual system
-- Core navigation and UI shell
-- BLE device discovery
-- Continuous integration and automated checks
+Bastion does not use “Meshtastic” in its primary or secondary software product name. The official Meshtastic logo is not used as the Bastion application icon or primary branding.
 
-### 2. Meshtastic Protocol
+## Trademark and licensing notice
 
-- Meshtastic ToRadio / FromRadio protobuf integration
-- BLE radio session
-- Configuration download
-- Node database
-- Connection state and recovery handling
+Meshtastic® is a registered trademark of Meshtastic LLC. Meshtastic software components are released under various licenses, see GitHub for details. No warranty is provided - use at your own risk.
 
-### 3. Messaging
+Bastion is independently developed and is not affiliated with, sponsored by, or endorsed by Meshtastic LLC. All Meshtastic® trademarks remain the property of Meshtastic LLC.
 
-- Direct messages
-- Channel messaging
-- Message history
-- Delivery state
-- Notifications
-- Field-friendly conversation interface
+Official policy and project information:
 
-### 4. Field Intelligence
+- Licensing and trademark rules: https://meshtastic.org/docs/legal/licensing-and-trademark/
+- Official website: https://meshtastic.org/
+- Official GitHub organization: https://github.com/meshtastic
 
-- Live node information
-- GPS and map integration
-- Telemetry
-- Traceroute
-- Signal and route diagnostics
-- Offline maps
-- Coverage and field-test sessions
+See [TRADEMARKS.md](TRADEMARKS.md) for Bastion's trademark-use rules.
 
-### 5. Device & Network Tools
+## Upstream software and third-party licenses
 
-- Supported USB and TCP transports
-- Radio settings
-- Device diagnostics
-- Network diagnostics
-- Optional MQTT integration
-- Troubleshooting utilities
+Meshtastic software components are released under various licenses. Bastion must preserve all applicable license notices, attribution, source-distribution obligations, and other requirements for any upstream component that is actually incorporated into the project.
 
-### 6. Release Readiness
+Bastion's current protocol codec is independently implemented for interoperability rather than copied generated protobuf source. Before any future upstream source, generated code, library, or asset is incorporated, its license must be reviewed and its obligations documented.
 
-- Automated testing
-- Physical hardware testing
-- Device compatibility testing
-- Privacy review
-- License review
-- Release documentation
-- Dedicated Bastion Meshtastic signing credentials
+Third-party Flutter/Dart dependencies remain subject to their respective licenses.
 
-## Local Development
+## Android application
 
-### Requirements
+Bastion's Android display name is **Bastion**. CI generates the Android project using the Dart project name `bastion` and organization `org.backcountrysignal`.
+
+The Bastion application icon is located at:
+
+```text
+branding/bastion-icon.png
+```
+
+The icon and Bastion visual identity are independent artwork and must not incorporate the official Meshtastic logo unless a future use is separately authorized and complies with the then-current trademark rules.
+
+## Local development
+
+Requirements:
 
 - Flutter 3.41.5
 - Java 17
 - Android SDK
 
-Clone the repository:
+After cloning this repository:
 
 ```sh
-git clone https://github.com/BastionMeshApp/Bastion-Meshtastic.git
-cd Bastion-Meshtastic
-```
-
-Prepare and run the project:
-
-```sh
-flutter create --platforms=android --org app.bastion --project-name bastion_meshtastic .
+flutter create --platforms=android --org org.backcountrysignal --project-name bastion .
 python3 scripts/prepare_android.py
 flutter pub get
 dart run flutter_launcher_icons
@@ -116,82 +82,16 @@ flutter test
 flutter run
 ```
 
-## Android Application
-
-Application ID:
-
-```text
-app.bastion.bastion_meshtastic
-```
-
-The approved Bastion application icon belongs at:
-
-```text
-branding/bastion-icon.png
-```
-
-Bastion Meshtastic must use its own release-signing credentials. **Do not reuse the MeshCore Bastion release keystore for this application.**
-
-## Building
-
-During development, a debug APK can be produced with:
-
-```sh
-flutter build apk --debug
-```
-
-When release signing and release QA are complete, the Android release build can be produced with:
-
-```sh
-flutter build apk --release
-```
-
-A release build should not be distributed as production-ready until hardware testing, signing, licensing, and required QA have been completed.
-
-## Safety & Field Use
-
-Bastion is intended to become useful for backcountry and emergency communications, but software alone should never be treated as a guaranteed emergency lifeline.
-
-During the current development stage, do not rely on Bastion Meshtastic as the sole method of emergency communication. Users should maintain appropriate backup communications and safety plans for their environment.
-
-## Meshtastic Compatibility & Attribution
-
-Bastion Meshtastic is an **independent project** and is not the official Meshtastic application.
-
-Meshtastic is an open-source ecosystem. Components incorporated from Meshtastic projects must retain their applicable licenses, notices, attribution, and source-distribution requirements.
-
-Official Meshtastic resources:
-
-- [Meshtastic](https://meshtastic.org/)
-- [Meshtastic GitHub organization](https://github.com/meshtastic)
-
-The official Meshtastic Android application and relevant upstream components have their own licensing requirements. Review and preserve the applicable upstream licenses before incorporating or distributing upstream code.
-
-## Contributing
-
-Contributions, testing, bug reports, hardware compatibility reports, and feature ideas are welcome.
-
-Use the repository's [GitHub Issues](https://github.com/BastionMeshApp/Bastion-Meshtastic/issues) section for:
-
-- Bug reports
-- Feature requests
-- Hardware compatibility findings
-- UI and usability suggestions
-- Meshtastic protocol issues
-- Field-test observations
-
-## BackCountrySignal
-
-Bastion Meshtastic is developed as part of the **BackCountrySignal** project.
-
-Visit [backcountrysignal.org](https://backcountrysignal.org/) for project information, mesh resources, tools, and future Bastion updates.
-
-## License
-
-Review the license files included in this repository before using, modifying, or distributing the software.
-
-Any incorporated upstream Meshtastic code, protobuf definitions, libraries, assets, trademarks, or other third-party material remains subject to its respective license and usage requirements.
-
 ## Build validation
 
 Pull requests and pushes are validated by the Android CI workflow with Flutter analysis, tests, an ARM64 release APK build, and a retained APK artifact.
+
+A build should not be represented as production-ready until hardware testing, release signing, dependency/license review, privacy review, and release QA are complete.
+
+## Safety
+
+Bastion may support field and emergency-communications workflows, but software and mesh radio links are not guaranteed emergency lifelines. Maintain appropriate backup communications and safety plans for the environment in which Bastion is used.
+
+## Contributing
+
+Testing, bug reports, hardware compatibility reports, and feature ideas are welcome. Contributions must preserve Bastion's independent branding and comply with [TRADEMARKS.md](TRADEMARKS.md) and all applicable third-party licenses.

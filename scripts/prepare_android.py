@@ -11,6 +11,6 @@ if 'android.permission.BLUETOOTH_SCAN' not in s:
 '''
     s=s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
                 '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'+permissions)
-s=s.replace('android:label="bastion_meshtastic"', 'android:label="Bastion Meshtastic"')
+s=s.replace('android:label="bastion"', 'android:label="Bastion"')
 p.write_text(s)
 print('Prepared Android manifest')

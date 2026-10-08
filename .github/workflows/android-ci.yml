@@ -1,4 +1,4 @@
-name: Bastion Meshtastic Android CI
+name: Bastion Android CI
 
 on:
   push:
@@ -21,8 +21,8 @@ jobs:
           channel: stable
       - name: Generate Android platform
         run: |
-          flutter create --platforms=android --org app.bastion --project-name bastion_meshtastic .
-          # Flutter's default template test references MyApp, not BastionMeshtasticApp.
+          flutter create --platforms=android --org org.backcountrysignal --project-name bastion .
+          # Flutter's default template test references MyApp, not BastionApp.
           rm -f test/widget_test.dart
       - name: Prepare permissions
         run: python3 scripts/prepare_android.py
@@ -39,7 +39,7 @@ jobs:
       - name: Upload testing APK
         uses: actions/upload-artifact@v4
         with:
-          name: Bastion-Meshtastic-Development-APK
+          name: Bastion-Development-APK
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14
       - name: Email successful main build APK

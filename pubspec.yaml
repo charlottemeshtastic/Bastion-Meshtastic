@@ -1,5 +1,5 @@
-name: bastion_meshtastic
-description: Independent Bastion companion for Meshtastic; early Android scaffold.
+name: bastion
+description: Independent field-mesh companion compatible with Meshtastic® firmware.
 publish_to: none
 version: 0.1.0+1
 
@@ -9,7 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  universal_ble: 2.0.1
+  universal_ble: 1.2.0
+  shared_preferences: 2.5.5
 
 dev_dependencies:
   flutter_test:
