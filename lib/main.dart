@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'services/meshtastic_ble_discovery.dart';
 import 'services/meshtastic_connection_controller.dart';
@@ -782,6 +785,7 @@ class _SettingsPage extends StatelessWidget {
         title: const Text('Low-power field mode'),
         subtitle: const Text('Reduce optional background activity'),
         value: lowPowerMode, onChanged: onLowPowerChanged)),
+      const _ChannelKeyWizard(),
       const Card(child: ListTile(
         leading: Icon(Icons.bluetooth), title: Text('Preferred transport'),
         subtitle: Text('Bluetooth LE'), trailing: Text('BLE'))),
@@ -803,6 +807,93 @@ class _SettingsPage extends StatelessWidget {
         text: 'Bastion is an independent project compatible with Meshtastic® firmware. It is not affiliated with, sponsored by, or endorsed by Meshtastic LLC. Do not rely on this development build as a sole method of emergency communication.',
         icon: Icons.shield_outlined),
     ],
+  );
+}
+
+/// Generates a local draft only. Never writes to a radio without a verified
+/// configuration protocol and explicit user confirmation.
+class _ChannelKeyWizard extends StatefulWidget {
+  const _ChannelKeyWizard();
+
+  @override
+  State<_ChannelKeyWizard> createState() => _ChannelKeyWizardState();
+}
+
+class _ChannelKeyWizardState extends State<_ChannelKeyWizard> {
+  final _name = TextEditingController();
+  String? _key;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  void _generate() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(32, (_) => random.nextInt(256));
+    setState(() => _key = base64Encode(bytes));
+  }
+
+  Future<void> _copyKey() async {
+    final key = _key;
+    if (key == null) return;
+    await Clipboard.setData(ClipboardData(text: key));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(
+        'Key copied. Treat it as a secret; clipboard contents may be visible to other apps.',
+      )),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.enhanced_encryption_outlined,
+              color: BastionApp.signal),
+          title: Text('ENCRYPTED CHANNEL PREPARATION',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Text('Create a secure 256-bit PSK draft for a future channel.'),
+        ),
+        TextField(
+          controller: _name,
+          maxLength: 11,
+          decoration: const InputDecoration(
+            labelText: 'Channel name (optional)',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        SizedBox(width: double.infinity, child: FilledButton.icon(
+          onPressed: _generate,
+          icon: const Icon(Icons.key),
+          label: const Text('GENERATE NEW 256-BIT KEY'),
+        )),
+        if (_key != null) ...[
+          const SizedBox(height: 12),
+          SelectableText(_key!, style: const TextStyle(
+            fontFamily: 'monospace', fontSize: 12)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _copyKey,
+            icon: const Icon(Icons.copy),
+            label: const Text('COPY SECRET KEY'),
+          ),
+        ],
+        const SizedBox(height: 8),
+        const Text(
+          'PREPARATION ONLY: This does not read or change your radio, '
+          'create a channel, or generate a compatible QR code. '
+          'The key is not saved by Bastion. Copy it before leaving this screen. '
+          'Never share the key publicly.',
+          style: TextStyle(fontSize: 11, color: Colors.white70),
+        ),
+      ]),
+    ),
   );
 }
 
