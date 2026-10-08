@@ -26,15 +26,20 @@ class MeshtasticRadioSession {
   Future<void> connect({required String deviceName}) async {
     connection.beginConnect(deviceName);
     try {
-      await transport.connect();
-      connection.markConnected();
-
+      // Subscribe before opening BLE. The transport can drain FromRadio as
+      // part of connect(), and a broadcast stream would otherwise drop those
+      // envelopes before the session is listening.
       await _subscription?.cancel();
       _subscription = transport.fromRadio.listen(
         _incoming.add,
         onError: connection.fail,
       );
+
+      await transport.connect();
+      connection.markConnected();
     } catch (error) {
+      await _subscription?.cancel();
+      _subscription = null;
       connection.fail(error);
       rethrow;
     }

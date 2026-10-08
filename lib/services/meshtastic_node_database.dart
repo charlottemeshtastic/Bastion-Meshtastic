@@ -32,6 +32,8 @@ class MeshtasticNodeDatabase {
   final Map<int, MeshtasticNode> _nodes = {};
   final StreamController<List<MeshtasticNode>> _changes =
       StreamController<List<MeshtasticNode>>.broadcast();
+  final StreamController<MeshtasticNode> _nodeUpdates =
+      StreamController<MeshtasticNode>.broadcast();
   StreamSubscription<Uint8List>? _subscription;
 
   List<MeshtasticNode> get nodes {
@@ -41,6 +43,7 @@ class MeshtasticNodeDatabase {
   }
 
   Stream<List<MeshtasticNode>> get changes => _changes.stream;
+  Stream<MeshtasticNode> get nodeUpdates => _nodeUpdates.stream;
 
   Future<void> start() async {
     await _subscription?.cancel();
@@ -55,12 +58,14 @@ class MeshtasticNodeDatabase {
     }
     final node = MeshtasticNodeInfoCodec.decode(envelope.payload!);
     _nodes[node.num] = node;
+    _nodeUpdates.add(node);
     _changes.add(nodes);
   }
 
   Future<void> dispose() async {
     await _subscription?.cancel();
     await _changes.close();
+    await _nodeUpdates.close();
   }
 }
 

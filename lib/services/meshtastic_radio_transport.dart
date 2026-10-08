@@ -58,9 +58,26 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
       // There may be no active scan.
     }
 
-    await UniversalBle.connect(deviceId);
     try {
-      final services = await UniversalBle.discoverServices(deviceId);
+      await UniversalBle.connect(deviceId).timeout(
+        const Duration(seconds: 25),
+        onTimeout: () => throw TimeoutException(
+          'Native BLE connect did not complete for $deviceId',
+        ),
+      );
+    } catch (error) {
+      throw StateError('BLE connection stage failed for $deviceId: $error');
+    }
+    try {
+      List<BleService> services;
+      try {
+        services = await UniversalBle.discoverServices(deviceId).timeout(
+          const Duration(seconds: 15),
+          onTimeout: () => throw TimeoutException('GATT service discovery timed out'),
+        );
+      } catch (error) {
+        throw StateError('BLE service discovery failed: $error');
+      }
       final hasMeshtastic = services.any(
         (service) => service.uuid.toLowerCase() == MeshtasticBleGatt.service,
       );
@@ -82,11 +99,18 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
         onError: _incoming.addError,
       );
 
-      await UniversalBle.subscribeNotifications(
-        deviceId,
-        MeshtasticBleGatt.service,
-        MeshtasticBleGatt.fromNum,
-      );
+      try {
+        await UniversalBle.subscribeNotifications(
+          deviceId,
+          MeshtasticBleGatt.service,
+          MeshtasticBleGatt.fromNum,
+        ).timeout(
+          const Duration(seconds: 15),
+          onTimeout: () => throw TimeoutException('FromNum subscription timed out'),
+        );
+      } catch (error) {
+        throw StateError('BLE FromNum notification subscription failed: $error');
+      }
 
       _connected = true;
       await _drainMailbox();
@@ -101,13 +125,33 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
     if (!_connected) {
       throw StateError('Meshtastic BLE transport is not connected.');
     }
-    await UniversalBle.write(
-      deviceId,
-      MeshtasticBleGatt.service,
-      MeshtasticBleGatt.toRadio,
-      envelope,
-      withoutResponse: false,
-    );
+    try {
+      await UniversalBle.write(
+        deviceId,
+        MeshtasticBleGatt.service,
+        MeshtasticBleGatt.toRadio,
+        envelope,
+        withoutResponse: false,
+      );
+    } catch (error) {
+      throw StateError('BLE ToRadio write failed: $error');
+    }
+
+    // A notification can be missed or arrive before the mailbox read starts.
+    // Poll after each command as a fallback; FromNum remains the primary signal.
+    unawaited(_pollAfterWrite());
+  }
+
+  Future<void> _pollAfterWrite() async {
+    for (final delay in <Duration>[
+      const Duration(milliseconds: 200),
+      const Duration(seconds: 1),
+      const Duration(seconds: 3),
+    ]) {
+      await Future<void>.delayed(delay);
+      if (!_connected) return;
+      _scheduleDrain();
+    }
   }
 
   void _scheduleDrain() {

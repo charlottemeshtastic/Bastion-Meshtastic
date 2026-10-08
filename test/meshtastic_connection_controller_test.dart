@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:bastion_meshtastic/services/meshtastic_connection_controller.dart';
+import 'package:bastion/services/meshtastic_connection_controller.dart';
 
 void main() {
   test('connection controller tracks a complete session lifecycle', () {

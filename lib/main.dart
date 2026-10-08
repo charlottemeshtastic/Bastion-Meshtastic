@@ -1,25 +1,26 @@
 import 'package:flutter/material.dart';
 import 'services/meshtastic_ble_discovery.dart';
 import 'services/meshtastic_connection_controller.dart';
+import 'services/meshtastic_messaging_service.dart';
 import 'services/meshtastic_radio_coordinator.dart';
 
-void main() => runApp(const BastionMeshtasticApp());
+void main() => runApp(const BastionApp());
 
-class BastionMeshtasticApp extends StatelessWidget {
-  const BastionMeshtasticApp({super.key});
-  static const cyan = Color(0xFF18D3D3);
-  static const panel = Color(0xFF12171C);
+class BastionApp extends StatelessWidget {
+  const BastionApp({super.key});
+  static const signal = Color(0xFFC7A24A);
+  static const panel = Color(0xFF151713);
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Bastion Meshtastic',
+    title: 'Bastion',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: const Color(0xFF0B0E11),
-      colorScheme: ColorScheme.fromSeed(seedColor: cyan, brightness: Brightness.dark),
-      appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF0B0E11)),
+      scaffoldBackgroundColor: const Color(0xFF0D0F0C),
+      colorScheme: ColorScheme.fromSeed(seedColor: signal, brightness: Brightness.dark),
+      appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF0D0F0C)),
       cardTheme: CardThemeData(
         color: panel,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -61,8 +62,8 @@ class _BastionShellState extends State<BastionShell> {
     appBar: AppBar(
       title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('BASTION', style: TextStyle(fontWeight: FontWeight.w900,
-          color: BastionMeshtasticApp.cyan, letterSpacing: 2)),
-        Text('MESHTASTIC EDITION', style: TextStyle(fontSize: 10, letterSpacing: 1.4)),
+          color: BastionApp.signal, letterSpacing: 2)),
+        Text('FIELD MESH', style: TextStyle(fontSize: 10, letterSpacing: 1.4)),
       ]),
       actions: [
         Padding(
@@ -84,10 +85,17 @@ class _BastionShellState extends State<BastionShell> {
     body: SafeArea(child: IndexedStack(index: index, children: [
       _NodesPage(discovery: ble, radio: radio, onOpenTools: () => setState(() => index = 3)),
       _ChatsPage(
+        radio: radio,
         botMode: botMode,
         awayReply: awayReply,
-        onBotModeChanged: (value) => setState(() => botMode = value),
-        onAwayReplyChanged: (value) => setState(() => awayReply = value),
+        onBotModeChanged: (value) {
+          setState(() => botMode = value);
+          radio.configureBot(enabled: value, reply: awayReply);
+        },
+        onAwayReplyChanged: (value) {
+          setState(() => awayReply = value);
+          radio.configureBot(enabled: botMode, reply: value);
+        },
       ),
       const _MapPage(),
       _ToolsPage(discovery: ble),
@@ -203,6 +211,100 @@ class _NodesPage extends StatelessWidget {
                   : Text('HW ${node.hardwareModel}'),
             )),
         ],
+        if (radio.isReady) ...[
+          const SizedBox(height: 14),
+          const Text('MESH HEALTH • LIVE SESSION',
+            style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: .8)),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: _Stat(label: 'KNOWN NODES',
+              value: '${radio.nodes.length}')),
+            const SizedBox(width: 10),
+            Expanded(child: _Stat(label: 'MESSAGES',
+              value: '${radio.messages.length}')),
+            const SizedBox(width: 10),
+            Expanded(child: _Stat(label: 'PENDING',
+              value: '${radio.pendingMessageCount}')),
+          ]),
+          const SizedBox(height: 10),
+          Card(child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('RECEIVE SIGNAL • TEXT PACKETS',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text('Received: ${radio.receivedTextPackets} • Latest SNR: '
+                '${radio.latestSnr == null ? 'Waiting for packet' : '${radio.latestSnr!.toStringAsFixed(1)} dB'}'),
+              const SizedBox(height: 10),
+              if (radio.snrHistory.isNotEmpty)
+                Wrap(spacing: 4, runSpacing: 4, children: [
+                  for (final snr in radio.snrHistory.reversed.take(20).toList().reversed)
+                    Tooltip(message: '${snr.toStringAsFixed(1)} dB',
+                      child: Container(
+                        width: 10,
+                        height: 12 + (snr + 20).clamp(0, 40).toDouble(),
+                        decoration: BoxDecoration(
+                          color: BastionApp.signal,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      )),
+                ])
+              else
+                const Text('Send a message from another node to start the SNR history.'),
+            ]),
+          )),
+          const SizedBox(height: 6),
+          const _Notice(
+            text: 'SNR values come from received text packets only. '
+              'RSSI and delivery-rate monitoring are not available yet.',
+            icon: Icons.monitor_heart_outlined,
+          ),
+        ],
+        if (radio.nodeDex.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const Text('NODEDEX • SAVED ENCOUNTERS',
+            style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: .8)),
+          const SizedBox(height: 6),
+          for (final record in radio.nodeDex)
+            Card(child: ListTile(
+              leading: Icon(record.favorite ? Icons.star : Icons.person_pin_circle_outlined,
+                color: record.favorite ? BastionApp.signal : null),
+              title: Text(record.displayName),
+              subtitle: Text('Encounters: ${record.encounters} • Last seen: ${record.lastSeen.toLocal()}'
+                '\n${record.note.isEmpty ? 'Tap to add field notes' : record.note}'),
+              isThreeLine: true,
+              trailing: IconButton(
+                tooltip: record.favorite ? 'Remove favorite' : 'Favorite node',
+                icon: Icon(record.favorite ? Icons.star : Icons.star_border),
+                onPressed: () => radio.setNodeFavorite(record.num, !record.favorite),
+              ),
+              onTap: () async {
+                final editor = TextEditingController(text: record.note);
+                final note = await showDialog<String>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    title: Text('Field notes • ${record.displayName}'),
+                    content: TextField(
+                      controller: editor,
+                      autofocus: true,
+                      maxLines: 3,
+                      maxLength: 300,
+                      decoration: const InputDecoration(
+                        hintText: 'Location, antenna, observations…',
+                      ),
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(dialogContext),
+                        child: const Text('CANCEL')),
+                      FilledButton(onPressed: () => Navigator.pop(dialogContext, editor.text),
+                        child: const Text('SAVE')),
+                    ],
+                  ),
+                );
+                if (note != null) await radio.setNodeNote(record.num, note);
+              },
+            )),
+        ],
         const SizedBox(height: 10),
         OutlinedButton.icon(onPressed: onOpenTools,
           icon: const Icon(Icons.construction), label: const Text('OPEN FIELD TOOLS')),
@@ -217,59 +319,248 @@ class _NodesPage extends StatelessWidget {
 }
 
 class _ChatsPage extends StatefulWidget {
-  const _ChatsPage({required this.botMode, required this.awayReply,
-    required this.onBotModeChanged, required this.onAwayReplyChanged});
+  const _ChatsPage({
+    required this.radio,
+    required this.botMode,
+    required this.awayReply,
+    required this.onBotModeChanged,
+    required this.onAwayReplyChanged,
+  });
+  final MeshtasticRadioCoordinator radio;
   final bool botMode;
   final String awayReply;
   final ValueChanged<bool> onBotModeChanged;
   final ValueChanged<String> onAwayReplyChanged;
+
   @override
   State<_ChatsPage> createState() => _ChatsPageState();
 }
 
 class _ChatsPageState extends State<_ChatsPage> {
-  late final TextEditingController reply = TextEditingController(text: widget.awayReply);
-  @override
-  void dispose() { reply.dispose(); super.dispose(); }
+  late final TextEditingController reply =
+      TextEditingController(text: widget.awayReply);
+  final composer = TextEditingController();
+  int destination = 0xffffffff;
 
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(16),
-    children: [
-      const _Header(icon: Icons.forum_outlined, title: 'COMMS',
-        detail: 'Messaging controls and automated-response setup. Sending unlocks when a verified radio session is connected.'),
-      const SizedBox(height: 14),
-      Card(child: SwitchListTile(
-        secondary: const Icon(Icons.smart_toy_outlined, color: BastionMeshtasticApp.cyan),
-        title: const Text('BOT MODE', style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(widget.botMode
-          ? 'Armed locally — waiting for radio messaging' : 'Automatic replies are off'),
-        value: widget.botMode,
-        onChanged: widget.onBotModeChanged,
-      )),
-      Card(child: Padding(
+  void dispose() {
+    reply.dispose();
+    composer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send([String? quickText]) async {
+    final text = (quickText ?? composer.text).trim();
+    if (text.isEmpty) return;
+    try {
+      await widget.radio.sendText(text: text, destination: destination);
+      if (quickText == null) composer.clear();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Message not sent: $error')),
+        );
+      }
+    }
+  }
+
+  String _nodeName(int nodeNum) {
+    for (final node in widget.radio.nodes) {
+      if (node.num == nodeNum) return node.displayName;
+    }
+    return '!${nodeNum.toRadixString(16).padLeft(8, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: widget.radio,
+    builder: (context, _) {
+      final messages = widget.radio.messages;
+      final connected = widget.radio.isReady;
+      return ListView(
         padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('AUTO-REPLY MESSAGE', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          TextField(
-            controller: reply, maxLines: 3, maxLength: 160,
-            decoration: const InputDecoration(border: OutlineInputBorder(),
-              hintText: 'Message to send while Bot Mode is active'),
-            onChanged: widget.onAwayReplyChanged,
+        children: [
+          _Header(
+            icon: Icons.forum_outlined,
+            title: 'COMMS',
+            detail: connected
+                ? 'Live Meshtastic messaging is ready.'
+                : 'Messages can be queued offline and send automatically when the radio is connected.',
           ),
-          const Wrap(spacing: 8, children: [
-            Chip(label: Text('!help')), Chip(label: Text('!status')),
-            Chip(label: Text('cooldown')), Chip(label: Text('loop guard')),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: _Stat(
+              label: 'LINK',
+              value: connected ? 'CONNECTED' : 'OFFLINE',
+            )),
+            const SizedBox(width: 10),
+            Expanded(child: _Stat(
+              label: 'MESSAGES',
+              value: messages.length.toString(),
+            )),
+            const SizedBox(width: 10),
+            Expanded(child: _Stat(
+              label: 'QUEUED',
+              value: widget.radio.pendingMessageCount.toString(),
+            )),
           ]),
-        ]),
-      )),
-      const _EmptyState(icon: Icons.mark_chat_unread_outlined,
-        title: 'No mesh conversations yet',
-        detail: 'Channels and direct messages will populate here after the radio transport is connected. Bot Mode settings above are already usable.'),
-    ],
+          const SizedBox(height: 12),
+          Card(child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('DESTINATION',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                initialValue: destination,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.cell_tower),
+                ),
+                items: [
+                  const DropdownMenuItem(
+                    value: 0xffffffff,
+                    child: Text('Channel 0 • Broadcast'),
+                  ),
+                  for (final node in widget.radio.nodes)
+                    DropdownMenuItem(
+                      value: node.num,
+                      child: Text('DM • ${node.displayName}'),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => destination = value);
+                },
+              ),
+            ]),
+          )),
+          Card(child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(children: [
+              TextField(
+                controller: composer,
+                maxLength: 228,
+                minLines: 1,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  labelText: destination == 0xffffffff
+                      ? 'Message Channel 0'
+                      : 'Message ${_nodeName(destination)}',
+                  border: const OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _send(),
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _send,
+                  icon: const Icon(Icons.send),
+                  label: const Text('SEND'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(spacing: 7, runSpacing: 7, children: [
+                for (final quick in const [
+                  'Copy',
+                  'On my way',
+                  'Need assistance',
+                  'What is your position?',
+                ])
+                  ActionChip(
+                    label: Text(quick),
+                    onPressed: () => _send(quick),
+                  ),
+              ]),
+            ]),
+          )),
+          if (messages.isEmpty)
+            const _EmptyState(
+              icon: Icons.mark_chat_unread_outlined,
+              title: 'No mesh messages yet',
+              detail: 'Incoming Channel 0 and direct messages will appear here after a radio is connected.',
+            )
+          else ...[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 8, 4, 4),
+              child: Text('MESSAGE TIMELINE',
+                style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: .8)),
+            ),
+            for (final message in messages.reversed.take(50))
+              Card(child: ListTile(
+                leading: CircleAvatar(
+                  child: Icon(message.direction == BastionMessageDirection.outgoing
+                      ? Icons.north_east : Icons.south_west),
+                ),
+                title: Text(message.text),
+                subtitle: Text(
+                  message.direction == BastionMessageDirection.outgoing
+                      ? (message.isBroadcast
+                          ? 'You → Channel ${message.channel}'
+                          : 'You → ${_nodeName(message.to)}')
+                      : (message.isBroadcast
+                          ? '${_nodeName(message.from)} → Channel ${message.channel}'
+                          : '${_nodeName(message.from)} → You'),
+                ),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(_deliveryIcon(message.deliveryState), size: 18),
+                    const SizedBox(height: 3),
+                    Text(_deliveryLabel(message.deliveryState),
+                      style: const TextStyle(fontSize: 9)),
+                  ],
+                ),
+              )),
+          ],
+          const SizedBox(height: 10),
+          Card(child: SwitchListTile(
+            secondary: const Icon(Icons.smart_toy_outlined,
+              color: BastionApp.signal),
+            title: const Text('BOT MODE',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(widget.botMode
+                ? 'ACTIVE • DM auto-reply + !help / !status • 30s loop guard'
+                : 'Automatic replies are off'),
+            value: widget.botMode,
+            onChanged: widget.onBotModeChanged,
+          )),
+          Card(child: ExpansionTile(
+            leading: const Icon(Icons.tune, color: BastionApp.signal),
+            title: const Text('BOT RESPONSE',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
+              TextField(
+                controller: reply,
+                maxLines: 3,
+                maxLength: 160,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'Message to send while Bot Mode is active',
+                ),
+                onChanged: widget.onAwayReplyChanged,
+              ),
+            ],
+          )),
+        ],
+      );
+    },
   );
 }
+
+IconData _deliveryIcon(BastionDeliveryState state) => switch (state) {
+  BastionDeliveryState.received => Icons.call_received,
+  BastionDeliveryState.queued => Icons.schedule,
+  BastionDeliveryState.sent => Icons.check,
+  BastionDeliveryState.failed => Icons.error_outline,
+};
+
+String _deliveryLabel(BastionDeliveryState state) => switch (state) {
+  BastionDeliveryState.received => 'RX',
+  BastionDeliveryState.queued => 'QUEUED',
+  BastionDeliveryState.sent => 'SENT',
+  BastionDeliveryState.failed => 'FAILED',
+};
 
 class _MapPage extends StatelessWidget {
   const _MapPage();
@@ -282,13 +573,13 @@ class _MapPage extends StatelessWidget {
       const SizedBox(height: 14),
       Container(
         height: 280,
-        decoration: BoxDecoration(color: BastionMeshtasticApp.panel,
+        decoration: BoxDecoration(color: BastionApp.panel,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: BastionMeshtasticApp.cyan.withValues(alpha: .25))),
+          border: Border.all(color: BastionApp.signal.withValues(alpha: .25))),
         child: const Stack(children: [
           Center(child: Icon(Icons.terrain, size: 110, color: Colors.white10)),
           Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.location_off_outlined, size: 42, color: BastionMeshtasticApp.cyan),
+            Icon(Icons.location_off_outlined, size: 42, color: BastionApp.signal),
             SizedBox(height: 10),
             Text('WAITING FOR POSITION DATA', style: TextStyle(fontWeight: FontWeight.bold)),
             SizedBox(height: 5),
@@ -341,7 +632,7 @@ class _ToolsPageState extends State<_ToolsPage> {
         detail: 'Practical utilities you can use before and during a deployment.'),
       const SizedBox(height: 14),
       Card(child: ExpansionTile(
-        leading: const Icon(Icons.battery_charging_full, color: BastionMeshtasticApp.cyan),
+        leading: const Icon(Icons.battery_charging_full, color: BastionApp.signal),
         title: const Text('BATTERY RUNTIME', style: TextStyle(fontWeight: FontWeight.bold)),
         subtitle: const Text('Estimate runtime from capacity and average current'),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -361,11 +652,11 @@ class _ToolsPageState extends State<_ToolsPage> {
             Padding(padding: const EdgeInsets.only(top: 12),
               child: Text('Estimated runtime: ${runtime!.toStringAsFixed(1)} hours',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold,
-                  color: BastionMeshtasticApp.cyan))),
+                  color: BastionApp.signal))),
         ],
       )),
       const Card(child: ExpansionTile(
-        leading: Icon(Icons.signal_cellular_alt, color: BastionMeshtasticApp.cyan),
+        leading: Icon(Icons.signal_cellular_alt, color: BastionApp.signal),
         title: Text('RSSI FIELD REFERENCE', style: TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text('Quick Bluetooth signal-strength guide'),
         childrenPadding: EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -379,7 +670,7 @@ class _ToolsPageState extends State<_ToolsPage> {
       )),
       Card(child: ExpansionTile(
         initiallyExpanded: true,
-        leading: const Icon(Icons.checklist, color: BastionMeshtasticApp.cyan),
+        leading: const Icon(Icons.checklist, color: BastionApp.signal),
         title: const Text('DEPLOYMENT CHECKLIST', style: TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text('${checked.length}/${checklist.length} ready'),
         children: [
@@ -393,16 +684,16 @@ class _ToolsPageState extends State<_ToolsPage> {
         ],
       )),
       Card(child: ListTile(
-        leading: const Icon(Icons.bluetooth_searching, color: BastionMeshtasticApp.cyan),
+        leading: const Icon(Icons.bluetooth_searching, color: BastionApp.signal),
         title: const Text('RADIO SCANNER', style: TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text('${widget.discovery.results.length} BLE devices currently discovered'),
         trailing: const Icon(Icons.chevron_right),
         onTap: widget.discovery.scanning ? null : widget.discovery.scan,
       )),
       const Card(child: ListTile(enabled: false, leading: Icon(Icons.route),
-        title: Text('TRACEROUTE'), subtitle: Text('Unlocks after verified radio connection'))),
+        title: Text('TRACEROUTE'), subtitle: Text('Coming soon — feature not yet implemented'))),
       const Card(child: ListTile(enabled: false, leading: Icon(Icons.monitor_heart_outlined),
-        title: Text('LIVE TELEMETRY'), subtitle: Text('Unlocks after verified radio connection'))),
+        title: Text('LIVE TELEMETRY'), subtitle: Text('Coming soon — feature not yet implemented'))),
     ],
   );
 }
@@ -430,12 +721,19 @@ class _SettingsPage extends StatelessWidget {
       const Card(child: ListTile(
         leading: Icon(Icons.security_outlined), title: Text('Safety mode'),
         subtitle: Text('No unverified device is treated as a mesh node'),
-        trailing: Icon(Icons.verified_user_outlined, color: BastionMeshtasticApp.cyan))),
+        trailing: Icon(Icons.verified_user_outlined, color: BastionApp.signal))),
       const Card(child: ListTile(
-        leading: Icon(Icons.info_outline), title: Text('Bastion Meshtastic'),
-        subtitle: Text('Development build • Independent Meshtastic companion'))),
+        leading: Icon(Icons.info_outline), title: Text('Bastion'),
+        subtitle: Text('Development build • Independent mesh companion'))),
+      const Card(child: ListTile(
+        leading: Icon(Icons.gavel_outlined),
+        title: Text('Trademark & compatibility'),
+        subtitle: Text(
+          'Compatible with Meshtastic® firmware. Meshtastic® is a registered trademark of Meshtastic LLC. Meshtastic software components are released under various licenses, see GitHub for details. No warranty is provided - use at your own risk.\\n\\nBastion is independently developed and is not affiliated with, sponsored by, or endorsed by Meshtastic LLC.',
+        ),
+      )),
       const _Notice(
-        text: 'Bastion is an independent companion project and is not an official Meshtastic application. Do not rely on this development build for emergency communication.',
+        text: 'Bastion is an independent project compatible with Meshtastic® firmware. It is not affiliated with, sponsored by, or endorsed by Meshtastic LLC. Do not rely on this development build as a sole method of emergency communication.',
         icon: Icons.shield_outlined),
     ],
   );
@@ -449,15 +747,15 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(color: BastionMeshtasticApp.panel,
+    decoration: BoxDecoration(color: BastionApp.panel,
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: BastionMeshtasticApp.cyan.withValues(alpha: .4))),
+      border: Border.all(color: BastionApp.signal.withValues(alpha: .4))),
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(icon, color: BastionMeshtasticApp.cyan, size: 30),
+      Icon(icon, color: BastionApp.signal, size: 30),
       const SizedBox(width: 14),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900,
-          color: BastionMeshtasticApp.cyan, letterSpacing: .8)),
+          color: BastionApp.signal, letterSpacing: .8)),
         const SizedBox(height: 6),
         Text(detail, style: const TextStyle(height: 1.4, color: Colors.white70)),
       ])),
@@ -472,11 +770,11 @@ class _Stat extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-    decoration: BoxDecoration(color: BastionMeshtasticApp.panel,
+    decoration: BoxDecoration(color: BastionApp.panel,
       borderRadius: BorderRadius.circular(12)),
     child: Column(children: [
       Text(value, style: const TextStyle(fontWeight: FontWeight.w900,
-        fontSize: 17, color: BastionMeshtasticApp.cyan)),
+        fontSize: 17, color: BastionApp.signal)),
       const SizedBox(height: 4),
       Text(label, textAlign: TextAlign.center,
         style: const TextStyle(fontSize: 9, color: Colors.white54, letterSpacing: .6)),
@@ -534,7 +832,7 @@ class _ReferenceRow extends StatelessWidget {
     child: Row(children: [
       SizedBox(width: 80, child: Text(value,
         style: const TextStyle(fontWeight: FontWeight.bold,
-          color: BastionMeshtasticApp.cyan))),
+          color: BastionApp.signal))),
       Expanded(child: Text(label)),
     ]),
   );
@@ -554,6 +852,6 @@ String _connectionLabel(MeshtasticConnectionState state) => switch (state) {
   MeshtasticConnectionState.connecting => 'CONNECTING',
   MeshtasticConnectionState.connected => 'CONNECTED',
   MeshtasticConnectionState.synchronizing => 'SYNCING',
-  MeshtasticConnectionState.ready => 'READY',
+  MeshtasticConnectionState.ready => 'CONNECTED',
   MeshtasticConnectionState.error => 'ERROR',
 };

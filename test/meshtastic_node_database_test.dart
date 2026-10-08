@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:bastion_meshtastic/services/meshtastic_node_database.dart';
+import 'package:bastion/services/meshtastic_node_database.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
