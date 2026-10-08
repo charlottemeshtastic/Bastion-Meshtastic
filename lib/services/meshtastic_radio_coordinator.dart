@@ -46,6 +46,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   final List<double> _snrHistory = [];
   int _receivedTextPackets = 0;
   final Map<int, BastionDeviceTelemetry> _deviceTelemetry = {};
+  final List<Uint8List> _radioConfigSnapshots = [];
+  final List<Uint8List> _channelSnapshots = [];
+  final List<Uint8List> _moduleConfigSnapshots = [];
 
   List<MeshtasticNode> get nodes => _nodes;
   List<BastionChatMessage> get messages =>
@@ -60,6 +63,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   double? get latestSnr => _snrHistory.isEmpty ? null : _snrHistory.last;
   int get receivedTextPackets => _receivedTextPackets;
   Map<int, BastionDeviceTelemetry> get deviceTelemetry => Map.unmodifiable(_deviceTelemetry);
+  int get radioConfigCount => _radioConfigSnapshots.length;
+  int get channelConfigCount => _channelSnapshots.length;
+  int get moduleConfigCount => _moduleConfigSnapshots.length;
 
   Future<void> setNodeFavorite(int num, bool value) async {
     await _nodeDex.setFavorite(num, value);
@@ -104,6 +110,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       _snrHistory.clear();
       _receivedTextPackets = 0;
       _deviceTelemetry.clear();
+      _radioConfigSnapshots.clear();
+      _channelSnapshots.clear();
+      _moduleConfigSnapshots.clear();
 
       final transport = MeshtasticUniversalBleTransport(deviceId: device.id);
       final session = MeshtasticRadioSession(
@@ -128,6 +137,18 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
       _identitySubscription = session.incomingEnvelopes.listen((bytes) {
         final envelope = MeshtasticPhoneApiCodec.decodeFromRadio(bytes);
+        if (envelope.payload != null) {
+          final target = switch (envelope.kind) {
+            FromRadioPayloadKind.config => _radioConfigSnapshots,
+            FromRadioPayloadKind.channel => _channelSnapshots,
+            FromRadioPayloadKind.moduleConfig => _moduleConfigSnapshots,
+            _ => null,
+          };
+          if (target != null) {
+            target.add(Uint8List.fromList(envelope.payload!));
+            notifyListeners();
+          }
+        }
         if (envelope.kind == FromRadioPayloadKind.packet &&
             envelope.payload != null) {
           try {
@@ -294,6 +315,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     _session = null;
     _nodes = const [];
     _deviceTelemetry.clear();
+    _radioConfigSnapshots.clear();
+    _channelSnapshots.clear();
+    _moduleConfigSnapshots.clear();
     _localNodeNum = null;
     if (resetConnection) connection.disconnect();
   }
