@@ -58,6 +58,14 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   bool get busy => _busy;
   bool get isReady => connection.isReady;
   int? get localNodeNum => _localNodeNum;
+  MeshtasticNode? get localNode {
+    final num = _localNodeNum;
+    if (num == null) return null;
+    for (final node in _nodes) {
+      if (node.num == num) return node;
+    }
+    return null;
+  }
   List<BastionNodeRecord> get nodeDex => _nodeDex.records;
   List<double> get snrHistory => List.unmodifiable(_snrHistory);
   double? get latestSnr => _snrHistory.isEmpty ? null : _snrHistory.last;
