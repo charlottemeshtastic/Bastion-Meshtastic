@@ -58,9 +58,18 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
       // There may be no active scan.
     }
 
-    await UniversalBle.connect(deviceId);
     try {
-      final services = await UniversalBle.discoverServices(deviceId);
+      await UniversalBle.connect(deviceId);
+    } catch (error) {
+      throw StateError('BLE connection stage failed for $deviceId: $error');
+    }
+    try {
+      List<BleService> services;
+      try {
+        services = await UniversalBle.discoverServices(deviceId);
+      } catch (error) {
+        throw StateError('BLE service discovery failed: $error');
+      }
       final hasMeshtastic = services.any(
         (service) => service.uuid.toLowerCase() == MeshtasticBleGatt.service,
       );
@@ -82,11 +91,15 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
         onError: _incoming.addError,
       );
 
-      await UniversalBle.subscribeNotifications(
-        deviceId,
-        MeshtasticBleGatt.service,
-        MeshtasticBleGatt.fromNum,
-      );
+      try {
+        await UniversalBle.subscribeNotifications(
+          deviceId,
+          MeshtasticBleGatt.service,
+          MeshtasticBleGatt.fromNum,
+        );
+      } catch (error) {
+        throw StateError('BLE FromNum notification subscription failed: $error');
+      }
 
       _connected = true;
       await _drainMailbox();
@@ -101,13 +114,17 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
     if (!_connected) {
       throw StateError('Meshtastic BLE transport is not connected.');
     }
-    await UniversalBle.write(
-      deviceId,
-      MeshtasticBleGatt.service,
-      MeshtasticBleGatt.toRadio,
-      envelope,
-      withoutResponse: false,
-    );
+    try {
+      await UniversalBle.write(
+        deviceId,
+        MeshtasticBleGatt.service,
+        MeshtasticBleGatt.toRadio,
+        envelope,
+        withoutResponse: false,
+      );
+    } catch (error) {
+      throw StateError('BLE ToRadio write failed: $error');
+    }
   }
 
   void _scheduleDrain() {
