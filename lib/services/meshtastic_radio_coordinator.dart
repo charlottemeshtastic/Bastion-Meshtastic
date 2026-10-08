@@ -321,7 +321,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 (int, String)? _readChannelName(Uint8List bytes) {
   final fields = _protoFields(bytes);
   final index = fields.$1[1];
-  final settings = fields.$2[3];
+  final settings = fields.$2[2];
   if (index == null || index < 0 || index > 7 || settings == null) return null;
   final settingsFields = _protoFields(settings);
   final nameBytes = settingsFields.$2[1];
