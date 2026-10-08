@@ -226,10 +226,37 @@ class _NodesPage extends StatelessWidget {
             Expanded(child: _Stat(label: 'PENDING',
               value: '${radio.pendingMessageCount}')),
           ]),
+          const SizedBox(height: 10),
+          Card(child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('RECEIVE SIGNAL • TEXT PACKETS',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text('Received: ${radio.receivedTextPackets} • Latest SNR: '
+                '${radio.latestSnr == null ? 'Waiting for packet' : '${radio.latestSnr!.toStringAsFixed(1)} dB'}'),
+              const SizedBox(height: 10),
+              if (radio.snrHistory.isNotEmpty)
+                Wrap(spacing: 4, runSpacing: 4, children: [
+                  for (final snr in radio.snrHistory.reversed.take(20).toList().reversed)
+                    Tooltip(message: '${snr.toStringAsFixed(1)} dB',
+                      child: Container(
+                        width: 10,
+                        height: 12 + (snr + 20).clamp(0, 40).toDouble(),
+                        decoration: BoxDecoration(
+                          color: BastionApp.signal,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      )),
+                ])
+              else
+                const Text('Send a message from another node to start the SNR history.'),
+            ]),
+          )),
           const SizedBox(height: 6),
           const _Notice(
-            text: 'These are observed counts, not RF signal-quality measurements. '
-              'RSSI/SNR history and packet-delivery statistics require additional telemetry.',
+            text: 'SNR values come from received text packets only. '
+              'RSSI and delivery-rate monitoring are not available yet.',
             icon: Icons.monitor_heart_outlined,
           ),
         ],
