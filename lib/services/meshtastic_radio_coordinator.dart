@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'bastion_message_archive.dart';
+import 'bastion_telemetry_codec.dart';
 import 'bastion_nodedex.dart';
 import 'meshtastic_ble_discovery.dart';
 import 'meshtastic_connection_controller.dart';
@@ -44,6 +45,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   int? _localNodeNum;
   final List<double> _snrHistory = [];
   int _receivedTextPackets = 0;
+  final Map<int, BastionDeviceTelemetry> _deviceTelemetry = {};
 
   List<MeshtasticNode> get nodes => _nodes;
   List<BastionChatMessage> get messages =>
@@ -57,6 +59,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   List<double> get snrHistory => List.unmodifiable(_snrHistory);
   double? get latestSnr => _snrHistory.isEmpty ? null : _snrHistory.last;
   int get receivedTextPackets => _receivedTextPackets;
+  Map<int, BastionDeviceTelemetry> get deviceTelemetry => Map.unmodifiable(_deviceTelemetry);
 
   Future<void> setNodeFavorite(int num, bool value) async {
     await _nodeDex.setFavorite(num, value);
@@ -100,6 +103,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       await _shutdownSession(resetConnection: false);
       _snrHistory.clear();
       _receivedTextPackets = 0;
+      _deviceTelemetry.clear();
 
       final transport = MeshtasticUniversalBleTransport(deviceId: device.id);
       final session = MeshtasticRadioSession(
@@ -127,6 +131,11 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
         if (envelope.kind == FromRadioPayloadKind.packet &&
             envelope.payload != null) {
           try {
+            final telemetry = BastionTelemetryCodec.decodeMeshPacket(envelope.payload!);
+            if (telemetry != null) {
+              _deviceTelemetry[telemetry.from] = telemetry;
+              notifyListeners();
+            }
             final packet = MeshtasticTextCodec.decodeMeshPacket(envelope.payload!);
             if (packet != null) {
               _receivedTextPackets++;
@@ -284,6 +293,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     await _session?.dispose();
     _session = null;
     _nodes = const [];
+    _deviceTelemetry.clear();
     _localNodeNum = null;
     if (resetConnection) connection.disconnect();
   }
