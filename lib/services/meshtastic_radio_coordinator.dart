@@ -42,6 +42,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   String _botReply =
       'Bastion is monitoring the mesh. I will reply when available.';
   int? _localNodeNum;
+  final List<double> _snrHistory = [];
+  int _receivedTextPackets = 0;
 
   List<MeshtasticNode> get nodes => _nodes;
   List<BastionChatMessage> get messages =>
@@ -52,6 +54,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   bool get isReady => connection.isReady;
   int? get localNodeNum => _localNodeNum;
   List<BastionNodeRecord> get nodeDex => _nodeDex.records;
+  List<double> get snrHistory => List.unmodifiable(_snrHistory);
+  double? get latestSnr => _snrHistory.isEmpty ? null : _snrHistory.last;
+  int get receivedTextPackets => _receivedTextPackets;
 
   Future<void> setNodeFavorite(int num, bool value) async {
     await _nodeDex.setFavorite(num, value);
@@ -93,6 +98,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
     try {
       await _shutdownSession(resetConnection: false);
+      _snrHistory.clear();
+      _receivedTextPackets = 0;
 
       final transport = MeshtasticUniversalBleTransport(deviceId: device.id);
       final session = MeshtasticRadioSession(
@@ -117,6 +124,22 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
       _identitySubscription = session.incomingEnvelopes.listen((bytes) {
         final envelope = MeshtasticPhoneApiCodec.decodeFromRadio(bytes);
+        if (envelope.kind == FromRadioPayloadKind.packet &&
+            envelope.payload != null) {
+          try {
+            final packet = MeshtasticTextCodec.decodeMeshPacket(envelope.payload!);
+            if (packet != null) {
+              _receivedTextPackets++;
+              if (packet.rxSnr != null && packet.rxSnr!.isFinite) {
+                _snrHistory.add(packet.rxSnr!);
+                if (_snrHistory.length > 60) _snrHistory.removeAt(0);
+              }
+              notifyListeners();
+            }
+          } on FormatException {
+            // Non-text or malformed packets must not disrupt the BLE session.
+          }
+        }
         if (envelope.kind == FromRadioPayloadKind.myInfo &&
             envelope.payload != null) {
           final nodeNum =
