@@ -59,14 +59,22 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
     }
 
     try {
-      await UniversalBle.connect(deviceId);
+      await UniversalBle.connect(deviceId).timeout(
+        const Duration(seconds: 25),
+        onTimeout: () => throw TimeoutException(
+          'Native BLE connect did not complete for $deviceId',
+        ),
+      );
     } catch (error) {
       throw StateError('BLE connection stage failed for $deviceId: $error');
     }
     try {
       List<BleService> services;
       try {
-        services = await UniversalBle.discoverServices(deviceId);
+        services = await UniversalBle.discoverServices(deviceId).timeout(
+          const Duration(seconds: 15),
+          onTimeout: () => throw TimeoutException('GATT service discovery timed out'),
+        );
       } catch (error) {
         throw StateError('BLE service discovery failed: $error');
       }
@@ -96,6 +104,9 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
           deviceId,
           MeshtasticBleGatt.service,
           MeshtasticBleGatt.fromNum,
+        ).timeout(
+          const Duration(seconds: 15),
+          onTimeout: () => throw TimeoutException('FromNum subscription timed out'),
         );
       } catch (error) {
         throw StateError('BLE FromNum notification subscription failed: $error');
