@@ -136,11 +136,13 @@ class _NodesPage extends StatelessWidget {
     builder: (context, _) => ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const _Header(icon: Icons.radar, title: 'MESH COMMAND',
-          detail: 'Find a nearby radio, inspect Bluetooth signal strength, and prepare for a verified Meshtastic session.'),
+        _Header(icon: Icons.radar, title: 'MESH COMMAND',
+          detail: radio.isReady
+              ? 'Your connected radio and the nodes reported by your mesh.'
+              : 'Choose a Meshtastic radio to connect to your mesh.'),
         const SizedBox(height: 14),
         Row(children: [
-          Expanded(child: _Stat(label: 'BLE DEVICES', value: '${discovery.results.length}')),
+          Expanded(child: _Stat(label: 'RADIO', value: radio.isReady ? 'CONNECTED' : 'OFFLINE')),
           const SizedBox(width: 10),
           Expanded(child: _Stat(label: 'MESH NODES', value: '${radio.nodes.length}')),
           const SizedBox(width: 10),
@@ -150,52 +152,39 @@ class _NodesPage extends StatelessWidget {
           )),
         ]),
         const SizedBox(height: 14),
-        FilledButton.icon(
-          onPressed: discovery.scanning ? null : discovery.scan,
-          icon: Icon(discovery.scanning ? Icons.hourglass_top : Icons.bluetooth_searching),
-          label: Text(discovery.scanning ? 'SCANNING…' : 'SCAN FOR RADIOS'),
-        ),
-        if (discovery.scanning)
-          TextButton(onPressed: discovery.stop, child: const Text('STOP SCAN')),
-        if (discovery.error != null)
-          _Notice(text: discovery.error!, icon: Icons.warning_amber),
-        const SizedBox(height: 10),
-        if (discovery.results.isEmpty)
-          const _EmptyState(icon: Icons.bluetooth_disabled,
-            title: 'No radios discovered yet',
-            detail: 'Tap SCAN FOR RADIOS. Nearby BLE devices will appear here with live RSSI.')
-        else
-          for (final item in discovery.results)
-            Card(child: ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.router)),
-              title: Text(item.name),
-              subtitle: Text(
-                '${item.id}\n${item.advertisesMeshtastic ? 'Meshtastic service advertised' : _rssiLabel(item.rssi)}',
+        if (radio.isReady) ...[
+          Card(child: ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.bluetooth_connected)),
+            title: Text(radio.connection.deviceName ?? 'Connected radio'),
+            subtitle: const Text('Verified Meshtastic connection'),
+            trailing: IconButton(
+              tooltip: 'Disconnect',
+              onPressed: radio.busy ? null : radio.disconnect,
+              icon: const Icon(Icons.link_off),
+            ),
+          )),
+          OutlinedButton.icon(
+            onPressed: radio.busy ? null : () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              useSafeArea: true,
+              builder: (sheetContext) => FractionallySizedBox(
+                heightFactor: .85,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: _RadioDiscovery(
+                    discovery: discovery,
+                    radio: radio,
+                    onConnected: () => Navigator.pop(sheetContext),
+                  ),
+                ),
               ),
-              isThreeLine: true,
-              trailing: radio.isReady && radio.connection.deviceName == item.name
-                  ? IconButton(
-                      tooltip: 'Disconnect',
-                      onPressed: radio.busy ? null : radio.disconnect,
-                      icon: const Icon(Icons.link_off),
-                    )
-                  : FilledButton(
-                      onPressed: radio.busy
-                          ? null
-                          : () async {
-                              try {
-                                await radio.connect(item);
-                              } catch (error) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Connection failed: $error')),
-                                  );
-                                }
-                              }
-                            },
-                      child: const Text('CONNECT'),
-                    ),
-            )),
+            ),
+            icon: const Icon(Icons.swap_horiz),
+            label: const Text('SWITCH RADIO'),
+          ),
+        ] else
+          _RadioDiscovery(discovery: discovery, radio: radio),
         if (radio.connection.error != null)
           _Notice(text: radio.connection.error!, icon: Icons.error_outline),
         if (radio.nodes.isNotEmpty) ...[
@@ -320,6 +309,98 @@ class _NodesPage extends StatelessWidget {
           icon: radio.isReady ? Icons.verified_outlined : Icons.info_outline),
       ],
     ),
+  );
+}
+
+/// Keep broad BLE discovery available for radios with incomplete advertisements,
+/// while presenting Meshtastic service advertisements by default.
+class _RadioDiscovery extends StatefulWidget {
+  const _RadioDiscovery({
+    required this.discovery,
+    required this.radio,
+    this.onConnected,
+  });
+  final MeshtasticBleDiscovery discovery;
+  final MeshtasticRadioCoordinator radio;
+  final VoidCallback? onConnected;
+
+  @override
+  State<_RadioDiscovery> createState() => _RadioDiscoveryState();
+}
+
+class _RadioDiscoveryState extends State<_RadioDiscovery> {
+  bool showAllDevices = false;
+
+  Future<void> _connect(MeshtasticBleDevice device) async {
+    try {
+      await widget.discovery.stop();
+      if (!mounted) return;
+      await widget.radio.connect(device);
+      if (mounted && widget.radio.isReady) widget.onConnected?.call();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Connection failed: $error')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: Listenable.merge([widget.discovery, widget.radio]),
+    builder: (context, _) {
+      final devices = widget.discovery.results
+          .where((device) => showAllDevices || device.advertisesMeshtastic)
+          .toList();
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('CHOOSE A RADIO',
+          style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: widget.discovery.scanning || widget.radio.busy
+              ? null : widget.discovery.scan,
+          icon: Icon(widget.discovery.scanning
+              ? Icons.hourglass_top : Icons.bluetooth_searching),
+          label: Text(widget.discovery.scanning ? 'SCANNING…' : 'SCAN FOR RADIOS'),
+        ),
+        if (widget.discovery.scanning)
+          TextButton(onPressed: widget.discovery.stop, child: const Text('STOP SCAN')),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Show all Bluetooth devices'),
+          subtitle: const Text('Troubleshooting: use if your radio is missing. '
+            'Other devices may not support Meshtastic.'),
+          value: showAllDevices,
+          onChanged: (value) => setState(() => showAllDevices = value),
+        ),
+        if (widget.discovery.error != null)
+          _Notice(text: widget.discovery.error!, icon: Icons.warning_amber),
+        if (devices.isEmpty)
+          _EmptyState(
+            icon: Icons.bluetooth_searching,
+            title: widget.discovery.scanning
+                ? 'Looking for radios…' : 'No radios discovered yet',
+            detail: 'Tap SCAN FOR RADIOS. If your radio is missing, '
+              'enable Show all Bluetooth devices.',
+          ),
+        for (final item in devices)
+          Card(child: ListTile(
+            leading: CircleAvatar(child: Icon(
+              item.advertisesMeshtastic ? Icons.router : Icons.bluetooth,
+            )),
+            title: Text(item.name),
+            subtitle: Text(
+              '${item.id}\n${item.advertisesMeshtastic ? 'Meshtastic service advertised' : 'Unverified Bluetooth device'}',
+            ),
+            isThreeLine: true,
+            trailing: FilledButton(
+              onPressed: widget.radio.busy ? null : () => _connect(item),
+              child: const Text('CONNECT'),
+            ),
+          )),
+      ]);
+    },
   );
 }
 
@@ -757,7 +838,7 @@ class _ToolsPageState extends State<_ToolsPage> {
       Card(child: ListTile(
         leading: const Icon(Icons.bluetooth_searching, color: BastionApp.signal),
         title: const Text('RADIO SCANNER', style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text('${widget.discovery.results.length} BLE devices currently discovered'),
+        subtitle: Text('${widget.discovery.results.where((device) => device.advertisesMeshtastic).length} Meshtastic radios discovered'),
         trailing: const Icon(Icons.chevron_right),
         onTap: widget.discovery.scanning ? null : widget.discovery.scan,
       )),
@@ -1022,14 +1103,6 @@ class _ReferenceRow extends StatelessWidget {
     ]),
   );
 }
-
-String _rssiLabel(int rssi) {
-  if (rssi >= -60) return 'Strong Bluetooth signal';
-  if (rssi >= -75) return 'Usable Bluetooth signal';
-  if (rssi >= -90) return 'Weak Bluetooth signal';
-  return 'Very weak Bluetooth signal';
-}
-
 
 String _connectionLabel(MeshtasticConnectionState state) => switch (state) {
   MeshtasticConnectionState.disconnected => 'OFFLINE',
