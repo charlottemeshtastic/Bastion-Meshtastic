@@ -163,7 +163,7 @@ class _NodesPage extends StatelessWidget {
           for (final item in discovery.results)
             Card(child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.router)),
-              title: Text(item.name),
+              title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text(
                 '${item.id}\n${item.advertisesMeshtastic ? 'Meshtastic service advertised' : _rssiLabel(item.rssi)}',
               ),
@@ -188,7 +188,7 @@ class _NodesPage extends StatelessWidget {
                                 }
                               }
                             },
-                      child: const Text('CONNECT'),
+                      child: const Text('CONNECT', maxLines: 1, softWrap: false),
                     ),
             )),
         if (radio.connection.error != null)
@@ -810,8 +810,9 @@ class _Stat extends StatelessWidget {
     decoration: BoxDecoration(color: BastionApp.panel,
       borderRadius: BorderRadius.circular(12)),
     child: Column(children: [
-      Text(value, style: const TextStyle(fontWeight: FontWeight.w900,
-        fontSize: 17, color: BastionApp.signal)),
+      FittedBox(fit: BoxFit.scaleDown, child: Text(value, maxLines: 1,
+        softWrap: false, style: const TextStyle(fontWeight: FontWeight.w900,
+        fontSize: 17, color: BastionApp.signal))),
       const SizedBox(height: 4),
       Text(label, textAlign: TextAlign.center,
         style: const TextStyle(fontSize: 9, color: Colors.white54, letterSpacing: .6)),
