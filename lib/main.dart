@@ -385,13 +385,13 @@ class _ChatsPageState extends State<_ChatsPage> {
             title: 'COMMS',
             detail: connected
                 ? 'Live Meshtastic messaging is ready.'
-                : 'Messages can be queued offline and send automatically when the radio reaches READY.',
+                : 'Messages can be queued offline and send automatically when the radio is connected.',
           ),
           const SizedBox(height: 12),
           Row(children: [
             Expanded(child: _Stat(
               label: 'LINK',
-              value: connected ? 'READY' : 'OFFLINE',
+              value: connected ? 'CONNECTED' : 'OFFLINE',
             )),
             const SizedBox(width: 10),
             Expanded(child: _Stat(
@@ -691,9 +691,9 @@ class _ToolsPageState extends State<_ToolsPage> {
         onTap: widget.discovery.scanning ? null : widget.discovery.scan,
       )),
       const Card(child: ListTile(enabled: false, leading: Icon(Icons.route),
-        title: Text('TRACEROUTE'), subtitle: Text('Unlocks after verified radio connection'))),
+        title: Text('TRACEROUTE'), subtitle: Text('Coming soon — feature not yet implemented'))),
       const Card(child: ListTile(enabled: false, leading: Icon(Icons.monitor_heart_outlined),
-        title: Text('LIVE TELEMETRY'), subtitle: Text('Unlocks after verified radio connection'))),
+        title: Text('LIVE TELEMETRY'), subtitle: Text('Coming soon — feature not yet implemented'))),
     ],
   );
 }
@@ -852,6 +852,6 @@ String _connectionLabel(MeshtasticConnectionState state) => switch (state) {
   MeshtasticConnectionState.connecting => 'CONNECTING',
   MeshtasticConnectionState.connected => 'CONNECTED',
   MeshtasticConnectionState.synchronizing => 'SYNCING',
-  MeshtasticConnectionState.ready => 'READY',
+  MeshtasticConnectionState.ready => 'CONNECTED',
   MeshtasticConnectionState.error => 'ERROR',
 };
