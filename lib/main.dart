@@ -106,6 +106,7 @@ class _BastionShellState extends State<BastionShell> {
       _SettingsPage(
         lowPowerMode: lowPowerMode,
         onLowPowerChanged: (value) => setState(() => lowPowerMode = value),
+        radio: radio,
       ),
     ])),
     bottomNavigationBar: NavigationBar(
@@ -769,7 +770,8 @@ class _ToolsPageState extends State<_ToolsPage> {
 }
 
 class _SettingsPage extends StatelessWidget {
-  const _SettingsPage({required this.lowPowerMode, required this.onLowPowerChanged});
+  const _SettingsPage({required this.lowPowerMode, required this.onLowPowerChanged, required this.radio});
+  final MeshtasticRadioCoordinator radio;
   final bool lowPowerMode;
   final ValueChanged<bool> onLowPowerChanged;
 
@@ -785,6 +787,26 @@ class _SettingsPage extends StatelessWidget {
         title: const Text('Low-power field mode'),
         subtitle: const Text('Reduce optional background activity'),
         value: lowPowerMode, onChanged: onLowPowerChanged)),
+      AnimatedBuilder(
+        animation: radio,
+        builder: (context, _) => Card(child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const ListTile(
+              leading: Icon(Icons.list_alt, color: BastionApp.signal),
+              title: Text('RADIO CHANNELS • READ ONLY'),
+              subtitle: Text('Names reported during the current verified radio sync. No keys are shown or changed.'),
+            ),
+            if (!radio.isReady)
+              const Text('Connect and synchronize a radio to inspect its channels.')
+            else if (radio.radioChannels.isEmpty)
+              const Text('No channel details received from this radio.')
+            else
+              for (final entry in (radio.radioChannels.entries.toList()..sort((a,b) => a.key.compareTo(b.key))))
+                ListTile(dense: true, title: Text(entry.value), subtitle: Text('Slot ${entry.key}')),
+          ]),
+        )),
+      ),
       const _ChannelKeyWizard(),
       const Card(child: ListTile(
         leading: Icon(Icons.bluetooth), title: Text('Preferred transport'),
