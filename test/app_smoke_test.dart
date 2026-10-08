@@ -12,7 +12,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('COMMS'), findsOneWidget);
     expect(find.text('DESTINATION'), findsOneWidget);
-    expect(find.text('Channel 0 • Broadcast'), findsOneWidget);
+    expect(find.text('Channel • Broadcast'), findsOneWidget);
     expect(find.text('QUEUED'), findsOneWidget);
 
     await tester.scrollUntilVisible(
