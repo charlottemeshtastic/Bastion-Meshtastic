@@ -147,7 +147,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
         if (envelope.kind == FromRadioPayloadKind.channel && envelope.payload != null) {
           (int, String)? channel;
           try {
-            channel = _readChannelName(envelope.payload!);
+            channel = readChannelName(envelope.payload!);
           } on FormatException {
             // Ignore malformed channel metadata without affecting messaging.
           }
@@ -317,7 +317,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
 /// Extracts only a channel's slot and public display name. PSKs are never
 /// decoded, persisted, or displayed by this read-only inspector.
-(int, String)? _readChannelName(Uint8List bytes) {
+(int, String)? readChannelName(Uint8List bytes) {
   final fields = _protoFields(bytes);
   final index = fields.$1[1];
   final settings = fields.$2[2];
