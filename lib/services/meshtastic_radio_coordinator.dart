@@ -31,6 +31,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   MeshtasticNodeDatabase? _nodeDatabase;
   MeshtasticMessagingService? _messaging;
   StreamSubscription<List<MeshtasticNode>>? _nodeSubscription;
+  StreamSubscription<MeshtasticNode>? _nodeDexSubscription;
   StreamSubscription<void>? _messageSubscription;
   StreamSubscription<Uint8List>? _identitySubscription;
   List<MeshtasticNode> _nodes = const [];
@@ -51,6 +52,16 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   bool get isReady => connection.isReady;
   int? get localNodeNum => _localNodeNum;
   List<BastionNodeRecord> get nodeDex => _nodeDex.records;
+
+  Future<void> setNodeFavorite(int num, bool value) async {
+    await _nodeDex.setFavorite(num, value);
+    notifyListeners();
+  }
+
+  Future<void> setNodeNote(int num, String note) async {
+    await _nodeDex.setNote(num, note);
+    notifyListeners();
+  }
 
   Future<void> _loadNodeDex() async {
     await _nodeDex.load();
@@ -132,10 +143,10 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       _syncMessageSnapshot(messaging);
       _nodeSubscription = nodeDatabase.changes.listen((nodes) {
         _nodes = nodes;
-        for (final node in nodes) {
-          unawaited(_nodeDex.observe(node));
-        }
         notifyListeners();
+      });
+      _nodeDexSubscription = nodeDatabase.nodeUpdates.listen((node) {
+        unawaited(_nodeDex.observe(node).then((_) => notifyListeners()));
       });
       _messageSubscription = messaging.changes.listen((_) {
         _syncMessageSnapshot(messaging);
@@ -147,9 +158,6 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       await messaging.flush();
 
       _nodes = nodeDatabase.nodes;
-      for (final node in _nodes) {
-        await _nodeDex.observe(node);
-      }
       _syncMessageSnapshot(messaging);
       notifyListeners();
     } catch (_) {
