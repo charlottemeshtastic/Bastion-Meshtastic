@@ -98,7 +98,7 @@ class _BastionShellState extends State<BastionShell> {
         },
       ),
       const _MapPage(),
-      _ToolsPage(discovery: ble),
+      _ToolsPage(discovery: ble, radio: radio),
       _SettingsPage(
         lowPowerMode: lowPowerMode,
         onLowPowerChanged: (value) => setState(() => lowPowerMode = value),
@@ -599,8 +599,9 @@ class _MapPage extends StatelessWidget {
 }
 
 class _ToolsPage extends StatefulWidget {
-  const _ToolsPage({required this.discovery});
+  const _ToolsPage({required this.discovery, required this.radio});
   final MeshtasticBleDiscovery discovery;
+  final MeshtasticRadioCoordinator radio;
   @override
   State<_ToolsPage> createState() => _ToolsPageState();
 }
@@ -692,8 +693,44 @@ class _ToolsPageState extends State<_ToolsPage> {
       )),
       const Card(child: ListTile(enabled: false, leading: Icon(Icons.route),
         title: Text('TRACEROUTE'), subtitle: Text('Coming soon — feature not yet implemented'))),
-      const Card(child: ListTile(enabled: false, leading: Icon(Icons.monitor_heart_outlined),
-        title: Text('LIVE TELEMETRY'), subtitle: Text('Coming soon — feature not yet implemented'))),
+      AnimatedBuilder(
+        animation: widget.radio,
+        builder: (context, _) {
+          final readings = widget.radio.deviceTelemetry.entries.toList()
+            ..sort((a, b) => a.key.compareTo(b.key));
+          return Card(child: ExpansionTile(
+            leading: const Icon(Icons.monitor_heart_outlined, color: BastionApp.signal),
+            title: const Text('LIVE TELEMETRY',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(widget.radio.isReady
+              ? '${readings.length} nodes reporting device metrics'
+              : 'Connect to a radio to receive telemetry'),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
+              if (readings.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('No device telemetry received yet. Metrics appear when nodes transmit them.'),
+                ),
+              for (final entry in readings)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Node !${entry.key.toRadixString(16).padLeft(8, '0')}'),
+                  subtitle: Text([
+                    if (entry.value.batteryLevel != null)
+                      'Battery ${entry.value.batteryLevel}%',
+                    if (entry.value.voltage != null)
+                      'Voltage ${entry.value.voltage!.toStringAsFixed(2)} V',
+                    if (entry.value.channelUtilization != null)
+                      'Channel ${entry.value.channelUtilization!.toStringAsFixed(1)}%',
+                    if (entry.value.airUtilTx != null)
+                      'TX airtime ${entry.value.airUtilTx!.toStringAsFixed(1)}%',
+                  ].join(' · ')),
+                ),
+            ],
+          ));
+        },
+      ),
     ],
   );
 }
