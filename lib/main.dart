@@ -100,6 +100,7 @@ class _BastionShellState extends State<BastionShell> {
       const _MapPage(),
       _ToolsPage(discovery: ble, radio: radio),
       _SettingsPage(
+        radio: radio,
         lowPowerMode: lowPowerMode,
         onLowPowerChanged: (value) => setState(() => lowPowerMode = value),
       ),
@@ -736,7 +737,8 @@ class _ToolsPageState extends State<_ToolsPage> {
 }
 
 class _SettingsPage extends StatelessWidget {
-  const _SettingsPage({required this.lowPowerMode, required this.onLowPowerChanged});
+  const _SettingsPage({required this.radio, required this.lowPowerMode, required this.onLowPowerChanged});
+  final MeshtasticRadioCoordinator radio;
   final bool lowPowerMode;
   final ValueChanged<bool> onLowPowerChanged;
 
@@ -747,6 +749,31 @@ class _SettingsPage extends StatelessWidget {
       const _Header(icon: Icons.tune, title: 'SETTINGS',
         detail: 'Field behavior, connection preferences and build information.'),
       const SizedBox(height: 14),
+      AnimatedBuilder(
+        animation: radio,
+        builder: (context, _) => Card(child: ExpansionTile(
+          initiallyExpanded: true,
+          leading: const Icon(Icons.settings_input_antenna, color: BastionApp.signal),
+          title: const Text('RADIO CONFIGURATION',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Text(radio.isReady
+            ? 'Radio connected • configuration inspection'
+            : 'Connect to a radio to inspect its settings'),
+          children: [
+            ListTile(title: const Text('Device & LoRa'),
+              subtitle: Text('${radio.radioConfigCount} configuration messages received • editing coming soon')),
+            ListTile(title: const Text('Channels'),
+              subtitle: Text('${radio.channelConfigCount} channel messages received • editing coming soon')),
+            ListTile(title: const Text('Modules'),
+              subtitle: Text('${radio.moduleConfigCount} module messages received • editing coming soon')),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 16),
+              child: Text('Read-only synchronization diagnostics. Bastion does not yet change radio settings.',
+                style: TextStyle(color: Colors.white70)),
+            ),
+          ],
+        )),
+      ),
       Card(child: SwitchListTile(
         secondary: const Icon(Icons.battery_saver_outlined),
         title: const Text('Low-power field mode'),
