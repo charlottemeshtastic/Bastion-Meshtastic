@@ -246,6 +246,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     if (messaging != null) _syncMessageSnapshot(messaging);
     await _nodeSubscription?.cancel();
     _nodeSubscription = null;
+    await _nodeDexSubscription?.cancel();
+    _nodeDexSubscription = null;
     await _messageSubscription?.cancel();
     _messageSubscription = null;
     await _identitySubscription?.cancel();
