@@ -161,35 +161,55 @@ class _NodesPage extends StatelessWidget {
             detail: 'Tap SCAN FOR RADIOS. Nearby BLE devices will appear here with live RSSI.')
         else
           for (final item in discovery.results)
-            Card(child: ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.router)),
-              title: Text(item.name),
-              subtitle: Text(
-                '${item.id}\n${item.advertisesMeshtastic ? 'Meshtastic service advertised' : _rssiLabel(item.rssi)}',
+            Card(child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    const CircleAvatar(child: Icon(Icons.router)),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(
+                      item.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    )),
+                  ]),
+                  const SizedBox(height: 8),
+                  SelectableText(item.id, style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 4),
+                  Text(item.advertisesMeshtastic
+                      ? 'Meshtastic service advertised'
+                      : _rssiLabel(item.rssi)),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: radio.isReady && radio.connection.deviceName == item.name
+                        ? IconButton(
+                            tooltip: 'Disconnect',
+                            onPressed: radio.busy ? null : radio.disconnect,
+                            icon: const Icon(Icons.link_off),
+                          )
+                        : FilledButton(
+                            onPressed: radio.busy
+                                ? null
+                                : () async {
+                                    try {
+                                      await radio.connect(item);
+                                    } catch (error) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Connection failed: $error')),
+                                        );
+                                      }
+                                    }
+                                  },
+                            child: const Text('CONNECT'),
+                          ),
+                  ),
+                ],
               ),
-              isThreeLine: true,
-              trailing: radio.isReady && radio.connection.deviceName == item.name
-                  ? IconButton(
-                      tooltip: 'Disconnect',
-                      onPressed: radio.busy ? null : radio.disconnect,
-                      icon: const Icon(Icons.link_off),
-                    )
-                  : FilledButton(
-                      onPressed: radio.busy
-                          ? null
-                          : () async {
-                              try {
-                                await radio.connect(item);
-                              } catch (error) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Connection failed: $error')),
-                                  );
-                                }
-                              }
-                            },
-                      child: const Text('CONNECT'),
-                    ),
             )),
         if (radio.connection.error != null)
           _Notice(text: radio.connection.error!, icon: Icons.error_outline),
@@ -773,8 +793,12 @@ class _Stat extends StatelessWidget {
     decoration: BoxDecoration(color: BastionApp.panel,
       borderRadius: BorderRadius.circular(12)),
     child: Column(children: [
-      Text(value, style: const TextStyle(fontWeight: FontWeight.w900,
-        fontSize: 17, color: BastionApp.signal)),
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(value, maxLines: 1, softWrap: false,
+          style: const TextStyle(fontWeight: FontWeight.w900,
+            fontSize: 17, color: BastionApp.signal)),
+      ),
       const SizedBox(height: 4),
       Text(label, textAlign: TextAlign.center,
         style: const TextStyle(fontSize: 9, color: Colors.white54, letterSpacing: .6)),
