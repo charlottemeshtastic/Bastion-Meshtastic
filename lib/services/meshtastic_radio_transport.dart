@@ -136,6 +136,22 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
     } catch (error) {
       throw StateError('BLE ToRadio write failed: $error');
     }
+
+    // A notification can be missed or arrive before the mailbox read starts.
+    // Poll after each command as a fallback; FromNum remains the primary signal.
+    unawaited(_pollAfterWrite());
+  }
+
+  Future<void> _pollAfterWrite() async {
+    for (final delay in <Duration>[
+      const Duration(milliseconds: 200),
+      const Duration(seconds: 1),
+      const Duration(seconds: 3),
+    ]) {
+      await Future<void>.delayed(delay);
+      if (!_connected) return;
+      _scheduleDrain();
+    }
   }
 
   void _scheduleDrain() {
