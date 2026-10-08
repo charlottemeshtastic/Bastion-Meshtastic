@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import 'bastion_message_archive.dart';
@@ -35,6 +37,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   StreamSubscription<void>? _messageSubscription;
   StreamSubscription<Uint8List>? _identitySubscription;
   List<MeshtasticNode> _nodes = const [];
+  final Map<int, String> _radioChannels = {};
+  Map<int, String> get radioChannels => Map.unmodifiable(_radioChannels);
   List<BastionChatMessage> _archivedMessages = const [];
   List<PendingTextMessage> _archivedPending = const [];
   bool _busy = false;
@@ -98,6 +102,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
     try {
       await _shutdownSession(resetConnection: false);
+      _radioChannels.clear();
       _snrHistory.clear();
       _receivedTextPackets = 0;
 
@@ -138,6 +143,18 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
             }
           } on FormatException {
             // Non-text or malformed packets must not disrupt the BLE session.
+          }
+        }
+        if (envelope.kind == FromRadioPayloadKind.channel && envelope.payload != null) {
+          (int, String)? channel;
+          try {
+            channel = _readChannelName(envelope.payload!);
+          } on FormatException {
+            // Ignore malformed channel metadata without affecting messaging.
+          }
+          if (channel != null) {
+            _radioChannels[channel.$1] = channel.$2;
+            notifyListeners();
           }
         }
         if (envelope.kind == FromRadioPayloadKind.myInfo &&
@@ -284,6 +301,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     await _session?.dispose();
     _session = null;
     _nodes = const [];
+    _radioChannels.clear();
     _localNodeNum = null;
     if (resetConnection) connection.disconnect();
   }
@@ -296,4 +314,57 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     unawaited(_shutdownSession(resetConnection: true));
     super.dispose();
   }
+}
+
+/// Extracts only a channel's slot and public display name. PSKs are never
+/// decoded, persisted, or displayed by this read-only inspector.
+(int, String)? _readChannelName(Uint8List bytes) {
+  final fields = _protoFields(bytes);
+  final index = fields.$1[1];
+  final settings = fields.$2[3];
+  if (index == null || index < 0 || index > 7 || settings == null) return null;
+  final settingsFields = _protoFields(settings);
+  final nameBytes = settingsFields.$2[1];
+  final name = nameBytes == null ? '' : utf8.decode(nameBytes, allowMalformed: true).trim();
+  return (index, name.isEmpty ? 'Channel $index' : name);
+}
+
+(Map<int, int>, Map<int, Uint8List>) _protoFields(Uint8List bytes) {
+  final numbers = <int, int>{};
+  final data = <int, Uint8List>{};
+  var offset = 0;
+  int varint() {
+    var value = 0;
+    var shift = 0;
+    while (offset < bytes.length && shift < 64) {
+      final b = bytes[offset++];
+      value |= (b & 127) << shift;
+      if (b < 128) return value;
+      shift += 7;
+    }
+    throw const FormatException('Malformed protobuf varint');
+  }
+  while (offset < bytes.length) {
+    final tag = varint();
+    final field = tag >> 3;
+    if (field == 0) throw const FormatException('Invalid protobuf field');
+    switch (tag & 7) {
+      case 0:
+        numbers[field] = varint();
+      case 1:
+        if (offset + 8 > bytes.length) throw const FormatException('Truncated protobuf');
+        offset += 8;
+      case 2:
+        final length = varint();
+        if (length < 0 || offset + length > bytes.length) throw const FormatException('Truncated protobuf');
+        data[field] = Uint8List.sublistView(bytes, offset, offset + length);
+        offset += length;
+      case 5:
+        if (offset + 4 > bytes.length) throw const FormatException('Truncated protobuf');
+        offset += 4;
+      default:
+        throw const FormatException('Unsupported protobuf wire type');
+    }
+  }
+  return (numbers, data);
 }
