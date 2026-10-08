@@ -211,6 +211,51 @@ class _NodesPage extends StatelessWidget {
                   : Text('HW ${node.hardwareModel}'),
             )),
         ],
+        if (radio.nodeDex.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const Text('NODEDEX • SAVED ENCOUNTERS',
+            style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: .8)),
+          const SizedBox(height: 6),
+          for (final record in radio.nodeDex)
+            Card(child: ListTile(
+              leading: Icon(record.favorite ? Icons.star : Icons.person_pin_circle_outlined,
+                color: record.favorite ? BastionApp.signal : null),
+              title: Text(record.displayName),
+              subtitle: Text('Encounters: ${record.encounters} • Last seen: ${record.lastSeen.toLocal()}'
+                '\n${record.note.isEmpty ? 'Tap to add field notes' : record.note}'),
+              isThreeLine: true,
+              trailing: IconButton(
+                tooltip: record.favorite ? 'Remove favorite' : 'Favorite node',
+                icon: Icon(record.favorite ? Icons.star : Icons.star_border),
+                onPressed: () => radio.setNodeFavorite(record.num, !record.favorite),
+              ),
+              onTap: () async {
+                final editor = TextEditingController(text: record.note);
+                final note = await showDialog<String>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    title: Text('Field notes • ${record.displayName}'),
+                    content: TextField(
+                      controller: editor,
+                      autofocus: true,
+                      maxLines: 3,
+                      maxLength: 300,
+                      decoration: const InputDecoration(
+                        hintText: 'Location, antenna, observations…',
+                      ),
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(dialogContext),
+                        child: const Text('CANCEL')),
+                      FilledButton(onPressed: () => Navigator.pop(dialogContext, editor.text),
+                        child: const Text('SAVE')),
+                    ],
+                  ),
+                );
+                if (note != null) await radio.setNodeNote(record.num, note);
+              },
+            )),
+        ],
         const SizedBox(height: 10),
         OutlinedButton.icon(onPressed: onOpenTools,
           icon: const Icon(Icons.construction), label: const Text('OPEN FIELD TOOLS')),
