@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'bastion_message_archive.dart';
+import 'bastion_radio_config_codec.dart';
 import 'bastion_telemetry_codec.dart';
 import 'bastion_nodedex.dart';
 import 'meshtastic_ble_discovery.dart';
@@ -71,6 +72,29 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   double? get latestSnr => _snrHistory.isEmpty ? null : _snrHistory.last;
   int get receivedTextPackets => _receivedTextPackets;
   Map<int, BastionDeviceTelemetry> get deviceTelemetry => Map.unmodifiable(_deviceTelemetry);
+  List<String> get loraSettings {
+    final result = <String>[];
+    for (final payload in _radioConfigSnapshots) {
+      try {
+        final summary = BastionRadioConfigCodec.loraSummary(payload);
+        if (summary != null) result.add(summary);
+      } on FormatException {
+        // Ignore malformed configuration frames.
+      }
+    }
+    return List.unmodifiable(result);
+  }
+  List<String> get channelSettings {
+    final result = <String>[];
+    for (final payload in _channelSnapshots) {
+      try {
+        result.add(BastionRadioConfigCodec.channelSummary(payload));
+      } on FormatException {
+        // Ignore malformed channel frames.
+      }
+    }
+    return List.unmodifiable(result);
+  }
   int get radioConfigCount => _radioConfigSnapshots.length;
   int get channelConfigCount => _channelSnapshots.length;
   int get moduleConfigCount => _moduleConfigSnapshots.length;
