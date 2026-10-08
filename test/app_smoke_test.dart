@@ -31,6 +31,12 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.settings_outlined).last);
     await tester.pumpAndSettle();
+    expect(find.text('RADIO CONFIGURATION'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Low-power field mode'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Low-power field mode'), findsOneWidget);
   });
 }
