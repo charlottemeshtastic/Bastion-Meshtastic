@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'bastion_admin_packet_codec.dart';
+import 'bastion_owner_codec.dart';
+import 'bastion_owner_readback.dart';
 import 'bastion_message_archive.dart';
 import 'bastion_radio_config_codec.dart';
 import 'bastion_telemetry_codec.dart';
@@ -253,6 +255,38 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       _busy = false;
       notifyListeners();
     }
+  }
+
+  /// Prepares a local owner update without sending it to the radio.
+  ///
+  /// This separates user input validation from the authenticated admin write.
+  Uint8List prepareNodeIdentityUpdate({
+    required String longName,
+    required String shortName,
+  }) => BastionOwnerCodec.encodeAdminSetOwner(
+    longName: longName,
+    shortName: shortName,
+  );
+
+  /// Observes a fresh local NodeInfo update after an authorized owner write.
+  /// Call before transmitting to avoid missing a fast radio response.
+  Future<MeshtasticNode> verifyNodeIdentityUpdate({
+    required String longName,
+    required String shortName,
+    Duration timeout = const Duration(seconds: 20),
+  }) {
+    final local = _localNodeNum;
+    final database = _nodeDatabase;
+    if (!connection.isReady || local == null || database == null) {
+      throw StateError('Connected radio node database is unavailable.');
+    }
+    return BastionOwnerReadback.waitForMatchingUpdate(
+      updates: database.nodeUpdates,
+      localNodeNum: local,
+      longName: longName,
+      shortName: shortName,
+      timeout: timeout,
+    );
   }
 
   /// Sends a pre-encoded, authorized AdminMessage to the connected local radio.
