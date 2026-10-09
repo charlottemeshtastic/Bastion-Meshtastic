@@ -6,6 +6,7 @@ import 'bastion_owner_codec.dart';
 import 'bastion_owner_readback.dart';
 import 'bastion_message_archive.dart';
 import 'bastion_radio_config_codec.dart';
+import 'bastion_reconnect_supervisor.dart';
 import 'bastion_telemetry_codec.dart';
 import 'bastion_nodedex.dart';
 import 'meshtastic_ble_discovery.dart';
@@ -30,6 +31,11 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       MeshtasticConnectionController();
   final BastionMessageArchive _archive = BastionMessageArchive();
   final BastionNodeDex _nodeDex = BastionNodeDex();
+  late final BastionReconnectSupervisor _reconnect =
+      BastionReconnectSupervisor(
+    reconnect: _reconnectLastDevice,
+    mayReconnect: () => !_userDisconnected && _lastDevice != null,
+  );
 
   MeshtasticRadioSession? _session;
   MeshtasticHandshake? _handshake;
@@ -39,6 +45,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   StreamSubscription<MeshtasticNode>? _nodeDexSubscription;
   StreamSubscription<void>? _messageSubscription;
   StreamSubscription<Uint8List>? _identitySubscription;
+  StreamSubscription<void>? _linkLossSubscription;
+  MeshtasticBleDevice? _lastDevice;
+  bool _userDisconnected = false;
   List<MeshtasticNode> _nodes = const [];
   List<BastionChatMessage> _archivedMessages = const [];
   List<PendingTextMessage> _archivedPending = const [];
@@ -61,6 +70,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       _messaging?.pending.length ?? _archivedPending.length;
   bool get busy => _busy;
   bool get isReady => connection.isReady;
+  bool get isReconnecting => _reconnect.isRunning;
   int? get localNodeNum => _localNodeNum;
   MeshtasticNode? get localNode {
     final num = _localNodeNum;
@@ -153,6 +163,14 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
   Future<void> connect(MeshtasticBleDevice device) async {
     if (_busy) return;
+    _reconnect.cancel();
+    _userDisconnected = false;
+    _lastDevice = device;
+    await _open(device);
+  }
+
+  Future<void> _open(MeshtasticBleDevice device) async {
+    if (_busy) throw StateError('Radio connection is already in progress.');
     _busy = true;
     notifyListeners();
 
@@ -185,6 +203,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       _nodeDatabase = nodeDatabase;
       _messaging = messaging;
       _handshake = handshake;
+      _linkLossSubscription =
+          transport.linkLost.listen((_) => unawaited(_handleLinkLoss()));
 
       _identitySubscription = session.incomingEnvelopes.listen((bytes) {
         final envelope = MeshtasticPhoneApiCodec.decodeFromRadio(bytes);
@@ -394,7 +414,34 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     return packetId;
   }
 
+  /// Tears down a dropped session and retries the last radio with backoff.
+  Future<void> _handleLinkLoss() async {
+    final device = _lastDevice;
+    if (_busy || _userDisconnected || device == null) return;
+    await _shutdownSession(resetConnection: false);
+    connection.beginConnect(device.name);
+    final recovery = _reconnect.recover();
+    notifyListeners();
+    final recovered = await recovery;
+    if (!recovered && !_userDisconnected && !_busy && _session == null) {
+      connection.fail(StateError(
+        'Radio link lost; reconnect gave up after ${_reconnect.attempts} '
+        'attempts. Last error: ${_reconnect.lastError}',
+      ));
+    }
+  }
+
+  Future<void> _reconnectLastDevice() async {
+    final device = _lastDevice;
+    if (device == null) throw StateError('No radio to reconnect.');
+    await _open(device);
+    // The user may have pressed disconnect while this attempt was in flight.
+    if (_userDisconnected) await _shutdownSession(resetConnection: true);
+  }
+
   Future<void> disconnect() async {
+    _userDisconnected = true;
+    _reconnect.cancel();
     if (_busy) return;
     _busy = true;
     notifyListeners();
@@ -422,6 +469,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     _messageSubscription = null;
     await _identitySubscription?.cancel();
     _identitySubscription = null;
+    await _linkLossSubscription?.cancel();
+    _linkLossSubscription = null;
     await _handshake?.dispose();
     _handshake = null;
     await _messaging?.dispose();
@@ -443,6 +492,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
   @override
   void dispose() {
+    _userDisconnected = true;
+    _reconnect.cancel();
     connection.removeListener(_relayConnectionChange);
     unawaited(_shutdownSession(resetConnection: true));
     super.dispose();

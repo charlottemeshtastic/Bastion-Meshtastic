@@ -171,7 +171,8 @@ class _NodesPage extends StatelessWidget {
                 '${item.id}\n${item.advertisesMeshtastic ? 'Meshtastic service advertised' : _rssiLabel(item.rssi)}',
               ),
               isThreeLine: true,
-              trailing: radio.isReady && radio.connection.deviceName == item.name
+              trailing: (radio.isReady || radio.isReconnecting) &&
+                      radio.connection.deviceName == item.name
                   ? IconButton(
                       tooltip: 'Disconnect',
                       onPressed: radio.busy ? null : radio.disconnect,
