@@ -793,7 +793,8 @@ class _SettingsPage extends StatelessWidget {
                 ? '${radio.channelConfigCount} channel messages • details unavailable'
                 : radio.channelSettings.join('\n')),
               trailing: const Icon(Icons.chevron_right),
-              enabled: radio.isReady,
+              // The editor is a read-only preview; allow it to open even
+              // while radio synchronization is incomplete or disconnected.
               onTap: () => showDialog<void>(
                 context: context,
                 builder: (_) => _ChannelDraftDialog(radio: radio),
