@@ -1,3 +1,4 @@
+import 'services/bastion_node_identity_validation.dart';
 import 'package:flutter/material.dart';
 import 'services/meshtastic_ble_discovery.dart';
 import 'services/meshtastic_connection_controller.dart';
@@ -770,6 +771,17 @@ class _SettingsPage extends StatelessWidget {
                   'ID: ${radio.localNode!.id ?? 'Not reported'}'),
               isThreeLine: true,
             ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit node names'),
+              subtitle: const Text('Preview and validate names before radio administration is enabled'),
+              enabled: radio.isReady && radio.localNode != null,
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => showDialog<void>(
+                context: context,
+                builder: (_) => _NodeIdentityDraftDialog(radio: radio),
+              ),
+            ),
             ListTile(title: const Text('Device & LoRa'),
               subtitle: Text(radio.loraSettings.isEmpty
                 ? '${radio.radioConfigCount} configuration messages • LoRa values unavailable'
@@ -815,6 +827,71 @@ class _SettingsPage extends StatelessWidget {
         icon: Icons.shield_outlined),
     ],
   );
+}
+
+class _NodeIdentityDraftDialog extends StatefulWidget {
+  const _NodeIdentityDraftDialog({required this.radio});
+  final MeshtasticRadioCoordinator radio;
+
+  @override
+  State<_NodeIdentityDraftDialog> createState() => _NodeIdentityDraftDialogState();
+}
+
+class _NodeIdentityDraftDialogState extends State<_NodeIdentityDraftDialog> {
+  late final TextEditingController _longName;
+  late final TextEditingController _shortName;
+
+  @override
+  void initState() {
+    super.initState();
+    _longName = TextEditingController(text: widget.radio.localNode?.longName ?? '');
+    _shortName = TextEditingController(text: widget.radio.localNode?.shortName ?? '');
+  }
+
+  @override
+  void dispose() {
+    _longName.dispose();
+    _shortName.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit node identity'),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: _longName,
+            maxLength: 39,
+            decoration: const InputDecoration(labelText: 'Long name'),
+          ),
+          TextField(
+            controller: _shortName,
+            maxLength: 4,
+            decoration: const InputDecoration(labelText: 'Short name'),
+          ),
+          const SizedBox(height: 8),
+          const Text('Draft only: Bastion cannot save node names to the radio yet. '
+              'No changes will be transmitted.',
+              style: TextStyle(color: Colors.white70)),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        TextButton(
+          onPressed: () {
+            final longError = BastionNodeIdentityValidation.longNameError(_longName.text);
+            final shortError = BastionNodeIdentityValidation.shortNameError(_shortName.text);
+            final message = longError ?? shortError ??
+                'Names are valid. Radio saving is not available in this build.';
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+          },
+          child: const Text('Validate'),
+        ),
+      ],
+    );
+  }
 }
 
 class _Header extends StatelessWidget {
