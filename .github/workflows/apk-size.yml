@@ -4,6 +4,9 @@ on:
     branches:
       - feature/bastion-v1-integration
   workflow_dispatch:
+concurrency:
+  group: bastion-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
