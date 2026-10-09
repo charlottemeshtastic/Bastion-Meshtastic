@@ -1,6 +1,5 @@
-import 'services/bastion_channel_validation.dart';
-import 'services/bastion_node_identity_validation.dart';
 import 'package:flutter/material.dart';
+import 'radio_settings_page.dart';
 import 'services/meshtastic_ble_discovery.dart';
 import 'services/meshtastic_connection_controller.dart';
 import 'services/meshtastic_messaging_service.dart';
@@ -761,9 +760,9 @@ class _SettingsPage extends StatelessWidget {
           leading: const Icon(Icons.settings_input_antenna, color: BastionApp.signal),
           title: const Text('RADIO CONFIGURATION',
             style: TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: Text(radio.isReady
-            ? 'Radio connected • configuration inspection'
-            : 'Connect to a radio to inspect its settings'),
+          subtitle: Text(radio.canAdminister
+            ? 'Radio connected • settings can be changed'
+            : 'Connect to a radio to view and change its settings'),
           children: [
             ListTile(
               leading: const Icon(Icons.person_outline),
@@ -777,14 +776,13 @@ class _SettingsPage extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.edit_outlined),
-              title: const Text('Edit node names'),
-              subtitle: const Text('Preview and validate names before radio administration is enabled'),
-              enabled: radio.isReady && radio.localNode != null,
+              title: const Text('Change radio settings'),
+              subtitle: const Text('Owner, LoRa, channels, device role and position'),
+              enabled: radio.canAdminister,
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => showDialog<void>(
-                context: context,
-                builder: (_) => _NodeIdentityDraftDialog(radio: radio),
-              ),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => RadioSettingsPage(radio: radio),
+              )),
             ),
             ListTile(title: const Text('Device & LoRa'),
               subtitle: Text(radio.loraSettings.isEmpty
@@ -795,21 +793,9 @@ class _SettingsPage extends StatelessWidget {
               subtitle: Text(radio.channelSettings.isEmpty
                 ? '${radio.channelConfigCount} channel messages • details unavailable'
                 : radio.channelSettings.join('\n')),
-              trailing: const Icon(Icons.chevron_right),
-              // The editor is a read-only preview; allow it to open even
-              // while radio synchronization is incomplete or disconnected.
-              onTap: () => showDialog<void>(
-                context: context,
-                builder: (_) => _ChannelDraftDialog(radio: radio),
-              ),
             ),
             ListTile(title: const Text('Modules'),
               subtitle: Text('${radio.moduleConfigCount} module messages received • editing coming soon')),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 4, 16, 16),
-              child: Text('Read-only synchronization diagnostics. Bastion does not yet change radio settings.',
-                style: TextStyle(color: Colors.white70)),
-            ),
           ],
         )),
       ),
@@ -844,155 +830,6 @@ class _SettingsPage extends StatelessWidget {
 
 /// Safe channel editor preview. No channel write is attempted until authenticated
 /// admin responses and verified radio readback are implemented.
-class _ChannelDraftDialog extends StatefulWidget {
-  const _ChannelDraftDialog({required this.radio});
-  final MeshtasticRadioCoordinator radio;
-
-  @override
-  State<_ChannelDraftDialog> createState() => _ChannelDraftDialogState();
-}
-
-class _ChannelDraftDialogState extends State<_ChannelDraftDialog> {
-  final TextEditingController _name = TextEditingController();
-  int _slot = 1;
-  int _role = 2;
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Channel editor preview'),
-    content: SingleChildScrollView(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Text('Current radio channels (read-only):'),
-        const SizedBox(height: 8),
-        Text(widget.radio.channelMetadata.isEmpty
-          ? 'No channel settings reported yet'
-          : widget.radio.channelMetadata.map((channel) {
-              final role = switch (channel.role) {
-                1 => 'Primary',
-                2 => 'Secondary',
-                _ => 'Disabled',
-              };
-              return 'Slot ${channel.index} • $role • '
-                  '${channel.name.isEmpty ? '(default)' : channel.name}';
-            }).join('\n')),
-        const SizedBox(height: 16),
-        DropdownButtonFormField<int>(
-          initialValue: _slot,
-          decoration: const InputDecoration(labelText: 'Channel slot'),
-          items: List.generate(7, (index) => DropdownMenuItem(
-            value: index + 1,
-            child: Text('Secondary slot ${index + 1}'),
-          )),
-          onChanged: (value) => setState(() => _slot = value ?? 1),
-        ),
-        DropdownButtonFormField<int>(
-          initialValue: _role,
-          decoration: const InputDecoration(labelText: 'Role'),
-          items: const [
-            DropdownMenuItem(value: 2, child: Text('Secondary')),
-            DropdownMenuItem(value: 0, child: Text('Disabled')),
-          ],
-          onChanged: (value) => setState(() => _role = value ?? 2),
-        ),
-        TextField(
-          controller: _name,
-          maxLength: 11,
-          decoration: const InputDecoration(labelText: 'Channel name'),
-        ),
-        const Text('Preview only: no channel keys are displayed or changed. '
-          'Saving requires authenticated radio administration and readback.',
-          style: TextStyle(color: Colors.white70)),
-      ]),
-    ),
-    actions: [
-      TextButton(onPressed: () => Navigator.pop(context),
-        child: const Text('Close')),
-      TextButton(
-        onPressed: () {
-          final error = BastionChannelValidation.validate(
-            index: _slot, role: _role, name: _name.text, key: const [],
-          );
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(error ?? 'Channel draft is valid. Radio saving is not enabled yet.'),
-          ));
-        },
-        child: const Text('Validate'),
-      ),
-    ],
-  );
-}
-
-class _NodeIdentityDraftDialog extends StatefulWidget {
-  const _NodeIdentityDraftDialog({required this.radio});
-  final MeshtasticRadioCoordinator radio;
-
-  @override
-  State<_NodeIdentityDraftDialog> createState() => _NodeIdentityDraftDialogState();
-}
-
-class _NodeIdentityDraftDialogState extends State<_NodeIdentityDraftDialog> {
-  late final TextEditingController _longName;
-  late final TextEditingController _shortName;
-
-  @override
-  void initState() {
-    super.initState();
-    _longName = TextEditingController(text: widget.radio.localNode?.longName ?? '');
-    _shortName = TextEditingController(text: widget.radio.localNode?.shortName ?? '');
-  }
-
-  @override
-  void dispose() {
-    _longName.dispose();
-    _shortName.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Edit node identity'),
-      content: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(
-            controller: _longName,
-            maxLength: 39,
-            decoration: const InputDecoration(labelText: 'Long name'),
-          ),
-          TextField(
-            controller: _shortName,
-            maxLength: 4,
-            decoration: const InputDecoration(labelText: 'Short name'),
-          ),
-          const SizedBox(height: 8),
-          const Text('Draft only: Bastion cannot save node names to the radio yet. '
-              'No changes will be transmitted.',
-              style: TextStyle(color: Colors.white70)),
-        ]),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-        TextButton(
-          onPressed: () {
-            final longError = BastionNodeIdentityValidation.longNameError(_longName.text);
-            final shortError = BastionNodeIdentityValidation.shortNameError(_shortName.text);
-            final message = longError ?? shortError ??
-                'Names are valid. Radio saving is not available in this build.';
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-          },
-          child: const Text('Validate'),
-        ),
-      ],
-    );
-  }
-}
-
 class _Header extends StatelessWidget {
   const _Header({required this.icon, required this.title, required this.detail});
   final IconData icon;

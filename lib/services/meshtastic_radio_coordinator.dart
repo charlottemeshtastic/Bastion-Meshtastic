@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 
+import '../generated/meshtastic/admin.pb.dart';
+import '../generated/meshtastic/channel.pb.dart';
+import '../generated/meshtastic/config.pb.dart';
+import '../generated/meshtastic/mesh.pb.dart' show User;
 import 'bastion_admin_packet_codec.dart';
 import 'bastion_owner_codec.dart';
 import 'bastion_owner_readback.dart';
@@ -11,6 +15,7 @@ import 'bastion_telemetry_codec.dart';
 import 'bastion_nodedex.dart';
 import 'meshtastic_ble_discovery.dart';
 import 'meshtastic_connection_controller.dart';
+import 'meshtastic_admin_session.dart';
 import 'meshtastic_handshake.dart';
 import 'meshtastic_messaging_service.dart';
 import 'meshtastic_node_database.dart';
@@ -41,6 +46,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   MeshtasticHandshake? _handshake;
   MeshtasticNodeDatabase? _nodeDatabase;
   MeshtasticMessagingService? _messaging;
+  MeshtasticAdminSession? _admin;
   StreamSubscription<List<MeshtasticNode>>? _nodeSubscription;
   StreamSubscription<MeshtasticNode>? _nodeDexSubscription;
   StreamSubscription<void>? _messageSubscription;
@@ -72,6 +78,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   bool get isReady => connection.isReady;
   bool get isReconnecting => _reconnect.isRunning;
   int? get localNodeNum => _localNodeNum;
+
+  /// Whether radio settings can be read and written right now.
+  bool get canAdminister => !_busy && connection.isReady && _admin != null;
   MeshtasticNode? get localNode {
     final num = _localNodeNum;
     if (num == null) return null;
@@ -279,6 +288,14 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
       await session.connect(deviceName: device.name);
       await handshake.synchronize();
+      final nodeNum = _localNodeNum;
+      if (nodeNum != null && nodeNum != 0) {
+        _admin = MeshtasticAdminSession(
+          incoming: session.incomingEnvelopes,
+          send: session.send,
+          localNodeNum: nodeNum,
+        );
+      }
       await messaging.flush();
 
       _nodes = nodeDatabase.nodes;
@@ -358,6 +375,30 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     await session.send(envelope);
     return packetId;
   }
+
+  MeshtasticAdminSession _requireAdmin() {
+    final admin = _admin;
+    if (!canAdminister || admin == null) {
+      throw StateError('Radio must be connected and ready to change settings.');
+    }
+    return admin;
+  }
+
+  Future<User> readOwner() => _requireAdmin().getOwner();
+
+  Future<Config> readConfig(AdminMessage_ConfigType type) =>
+      _requireAdmin().getConfig(type);
+
+  Future<Channel> readChannel(int index) => _requireAdmin().getChannel(index);
+
+  /// Writes are acknowledged by the radio; many make it reboot, after which
+  /// the reconnect supervisor restores the link.
+  Future<void> writeOwner(User owner) => _requireAdmin().setOwner(owner);
+
+  Future<void> writeConfig(Config config) => _requireAdmin().setConfig(config);
+
+  Future<void> writeChannel(Channel channel) =>
+      _requireAdmin().setChannel(channel);
 
   Future<int> sendText({
     required String text,
@@ -471,6 +512,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     _identitySubscription = null;
     await _linkLossSubscription?.cancel();
     _linkLossSubscription = null;
+    await _admin?.dispose();
+    _admin = null;
     await _handshake?.dispose();
     _handshake = null;
     await _messaging?.dispose();
