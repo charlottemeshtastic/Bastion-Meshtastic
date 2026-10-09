@@ -1,3 +1,4 @@
+import 'services/bastion_channel_validation.dart';
 import 'services/bastion_node_identity_validation.dart';
 import 'package:flutter/material.dart';
 import 'services/meshtastic_ble_discovery.dart';
@@ -786,10 +787,18 @@ class _SettingsPage extends StatelessWidget {
               subtitle: Text(radio.loraSettings.isEmpty
                 ? '${radio.radioConfigCount} configuration messages • LoRa values unavailable'
                 : radio.loraSettings.join('\n'))),
-            ListTile(title: const Text('Channels'),
+            ListTile(
+              title: const Text('Channels'),
               subtitle: Text(radio.channelSettings.isEmpty
                 ? '${radio.channelConfigCount} channel messages • details unavailable'
-                : radio.channelSettings.join('\n'))),
+                : radio.channelSettings.join('\n')),
+              trailing: const Icon(Icons.chevron_right),
+              enabled: radio.isReady,
+              onTap: () => showDialog<void>(
+                context: context,
+                builder: (_) => _ChannelDraftDialog(radio: radio),
+              ),
+            ),
             ListTile(title: const Text('Modules'),
               subtitle: Text('${radio.moduleConfigCount} module messages received • editing coming soon')),
             const Padding(
@@ -825,6 +834,84 @@ class _SettingsPage extends StatelessWidget {
       const _Notice(
         text: 'Bastion is an independent project compatible with Meshtastic® firmware. It is not affiliated with, sponsored by, or endorsed by Meshtastic LLC. Do not rely on this development build as a sole method of emergency communication.',
         icon: Icons.shield_outlined),
+    ],
+  );
+}
+
+/// Safe channel editor preview. No channel write is attempted until authenticated
+/// admin responses and verified radio readback are implemented.
+class _ChannelDraftDialog extends StatefulWidget {
+  const _ChannelDraftDialog({required this.radio});
+  final MeshtasticRadioCoordinator radio;
+
+  @override
+  State<_ChannelDraftDialog> createState() => _ChannelDraftDialogState();
+}
+
+class _ChannelDraftDialogState extends State<_ChannelDraftDialog> {
+  final TextEditingController _name = TextEditingController();
+  int _slot = 1;
+  int _role = 2;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Channel editor preview'),
+    content: SingleChildScrollView(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('Current radio channels (read-only):'),
+        const SizedBox(height: 8),
+        Text(widget.radio.channelSettings.isEmpty
+          ? 'No channel settings reported'
+          : widget.radio.channelSettings.join('\\n')),
+        const SizedBox(height: 16),
+        DropdownButtonFormField<int>(
+          initialValue: _slot,
+          decoration: const InputDecoration(labelText: 'Channel slot'),
+          items: List.generate(7, (index) => DropdownMenuItem(
+            value: index + 1,
+            child: Text('Secondary slot ${index + 1}'),
+          )),
+          onChanged: (value) => setState(() => _slot = value ?? 1),
+        ),
+        DropdownButtonFormField<int>(
+          initialValue: _role,
+          decoration: const InputDecoration(labelText: 'Role'),
+          items: const [
+            DropdownMenuItem(value: 2, child: Text('Secondary')),
+            DropdownMenuItem(value: 0, child: Text('Disabled')),
+          ],
+          onChanged: (value) => setState(() => _role = value ?? 2),
+        ),
+        TextField(
+          controller: _name,
+          maxLength: 11,
+          decoration: const InputDecoration(labelText: 'Channel name'),
+        ),
+        const Text('Preview only: no channel keys are displayed or changed. '
+          'Saving requires authenticated radio administration and readback.',
+          style: TextStyle(color: Colors.white70)),
+      ]),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context),
+        child: const Text('Close')),
+      TextButton(
+        onPressed: () {
+          final error = BastionChannelValidation.validate(
+            index: _slot, role: _role, name: _name.text, key: const [],
+          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(error ?? 'Channel draft is valid. Radio saving is not enabled yet.'),
+          ));
+        },
+        child: const Text('Validate'),
+      ),
     ],
   );
 }
