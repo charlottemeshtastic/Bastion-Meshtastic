@@ -98,6 +98,22 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     }
     return List.unmodifiable(result);
   }
+  /// Latest valid metadata for each channel slot, without exposing PSKs.
+  List<({int index, int role, String name})> get channelMetadata {
+    final bySlot = <int, ({int index, int role, String name})>{};
+    for (final payload in _channelSnapshots) {
+      try {
+        final metadata = BastionRadioConfigCodec.channelMetadata(payload);
+        bySlot[metadata.index] = metadata;
+      } on FormatException {
+        // Ignore malformed frames without hiding valid channel snapshots.
+      }
+    }
+    final sorted = bySlot.values.toList()
+      ..sort((a, b) => a.index.compareTo(b.index));
+    return List.unmodifiable(sorted);
+  }
+
   int get radioConfigCount => _radioConfigSnapshots.length;
   int get channelConfigCount => _channelSnapshots.length;
   int get moduleConfigCount => _moduleConfigSnapshots.length;
