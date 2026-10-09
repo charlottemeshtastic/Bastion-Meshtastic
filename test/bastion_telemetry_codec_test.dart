@@ -32,4 +32,20 @@ void main() {
     expect(() => BastionTelemetryCodec.decodeMeshPacket(bytes),
         throwsFormatException);
   });
+
+  test('ignores telemetry without device metrics', () {
+    final bytes = Uint8List.fromList([
+      0x0d, 0x78, 0x56, 0x34, 0x12,
+      0x22, 0x04, 0x08, 0x43, 0x12, 0x00,
+    ]);
+    expect(BastionTelemetryCodec.decodeMeshPacket(bytes), isNull);
+  });
+
+  test('ignores telemetry without sender identity', () {
+    final bytes = Uint8List.fromList([
+      0x22, 0x08, 0x08, 0x43,
+      0x12, 0x04, 0x12, 0x02, 0x08, 0x57,
+    ]);
+    expect(BastionTelemetryCodec.decodeMeshPacket(bytes), isNull);
+  });
 }
