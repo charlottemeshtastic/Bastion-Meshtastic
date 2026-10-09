@@ -44,7 +44,7 @@ jobs:
       - name: Verify generated code compiles
         run: |
           flutter pub get
-          dart analyze --no-fatal-warnings --no-fatal-infos lib/generated
+          dart analyze --no-fatal-warnings lib/generated
       - name: Commit generated code
         run: |
           git add lib/generated
