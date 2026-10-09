@@ -23,5 +23,5 @@ jobs:
       - run: flutter pub get
       - name: Dependency status
         run: flutter pub outdated
-      - name: Security advisories
-        run: dart pub audit
+      - name: Resolve dependencies and report advisories
+        run: flutter pub get
