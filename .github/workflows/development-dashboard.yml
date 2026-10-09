@@ -1,0 +1,36 @@
+name: Bastion Development Dashboard
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 11 * * 1'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Summarize recent CI results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request
+          repo=os.environ['GITHUB_REPOSITORY']
+          url=f'https://api.github.com/repos/{repo}/actions/runs?branch=feature%2Fbastion-v1-integration&per_page=20'
+          req=urllib.request.Request(url,headers={'Authorization':f"Bearer {os.environ['GH_TOKEN']}",'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(req,timeout=20) as response:
+              runs=json.load(response)['workflow_runs']
+          lines=['# Bastion development dashboard','','| Workflow | Status | Commit |','|---|---|---|']
+          for run in runs[:20]:
+              lines.append(f"| {run['name'].replace('|','/')} | {run['conclusion'] or run['status']} | {run['head_sha'][:8]} |")
+          report='\n'.join(lines)+'\n'
+          print(report)
+          open(os.environ['GITHUB_STEP_SUMMARY'],'a').write(report)
+          open('bastion-dashboard.md','w').write(report)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bastion-Development-Dashboard
+          path: bastion-dashboard.md
