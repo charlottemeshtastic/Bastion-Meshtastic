@@ -161,6 +161,21 @@ class MeshtasticMessagingService {
           envelope.payload == null) {
         return;
       }
+      final ack = MeshtasticTextCodec.decodeRoutingAck(envelope.payload!);
+      if (ack != null) {
+        final matches = _messages.where((m) =>
+            m.packetId == ack.requestId &&
+            m.direction == BastionMessageDirection.outgoing &&
+            m.to != MeshtasticTextCodec.broadcastNode &&
+            m.to == ack.from &&
+            m.deliveryState == BastionDeliveryState.sent);
+        if (matches.isNotEmpty) {
+          _setDelivery(ack.requestId, ack.errorReason == 0
+              ? BastionDeliveryState.delivered
+              : BastionDeliveryState.failed);
+        }
+        return;
+      }
       final message = MeshtasticTextCodec.decodeMeshPacket(envelope.payload!);
       if (message == null) return;
       final key = '${message.from}:${message.packetId}';
