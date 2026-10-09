@@ -8,6 +8,7 @@ import '../generated/meshtastic/config.pb.dart';
 import '../generated/meshtastic/mesh.pb.dart' show User;
 import '../generated/meshtastic/module_config.pb.dart';
 import 'bastion_admin_packet_codec.dart';
+import 'bastion_background_service.dart';
 import 'bastion_owner_codec.dart';
 import 'bastion_owner_readback.dart';
 import 'bastion_message_archive.dart';
@@ -29,7 +30,8 @@ import 'meshtastic_traceroute.dart';
 
 /// Owns one verified Meshtastic radio session and exposes it to the UI.
 class MeshtasticRadioCoordinator extends ChangeNotifier {
-  MeshtasticRadioCoordinator() {
+  MeshtasticRadioCoordinator({BastionBackgroundKeeper? background})
+      : _background = background ?? BastionForegroundService() {
     connection.addListener(_relayConnectionChange);
     unawaited(_loadArchive());
     unawaited(_loadNodeDex());
@@ -39,6 +41,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       MeshtasticConnectionController();
   final BastionMessageArchive _archive = BastionMessageArchive();
   final BastionNodeDex _nodeDex = BastionNodeDex();
+  final BastionBackgroundKeeper _background;
   late final BastionReconnectSupervisor _reconnect =
       BastionReconnectSupervisor(
     reconnect: _reconnectLastDevice,
@@ -182,7 +185,12 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     _reconnect.cancel();
     _userDisconnected = false;
     _lastDevice = device;
-    await _open(device);
+    try {
+      await _open(device);
+    } catch (_) {
+      await _background.release();
+      rethrow;
+    }
   }
 
   Future<void> _open(MeshtasticBleDevice device) async {
@@ -313,6 +321,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       _nodes = nodeDatabase.nodes;
       _syncMessageSnapshot(messaging);
       notifyListeners();
+      unawaited(_background.keepAlive(radioName: device.name, reconnecting: false));
     } catch (_) {
       await _shutdownSession(resetConnection: false);
       rethrow;
@@ -562,10 +571,12 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     if (_busy || _userDisconnected || device == null) return;
     await _shutdownSession(resetConnection: false);
     connection.beginConnect(device.name);
+    unawaited(_background.keepAlive(radioName: device.name, reconnecting: true));
     final recovery = _reconnect.recover();
     notifyListeners();
     final recovered = await recovery;
     if (!recovered && !_userDisconnected && !_busy && _session == null) {
+      unawaited(_background.release());
       connection.fail(StateError(
         'Radio link lost; reconnect gave up after ${_reconnect.attempts} '
         'attempts. Last error: ${_reconnect.lastError}',
@@ -584,6 +595,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   Future<void> disconnect() async {
     _userDisconnected = true;
     _reconnect.cancel();
+    unawaited(_background.release());
     if (_busy) return;
     _busy = true;
     notifyListeners();
@@ -640,6 +652,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   void dispose() {
     _userDisconnected = true;
     _reconnect.cancel();
+    unawaited(_background.release());
     connection.removeListener(_relayConnectionChange);
     unawaited(_shutdownSession(resetConnection: true));
     super.dispose();
