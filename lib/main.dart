@@ -867,9 +867,17 @@ class _ChannelDraftDialogState extends State<_ChannelDraftDialog> {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         const Text('Current radio channels (read-only):'),
         const SizedBox(height: 8),
-        Text(widget.radio.channelSettings.isEmpty
-          ? 'No channel settings reported'
-          : widget.radio.channelSettings.join('\\n')),
+        Text(widget.radio.channelMetadata.isEmpty
+          ? 'No channel settings reported yet'
+          : widget.radio.channelMetadata.map((channel) {
+              final role = switch (channel.role) {
+                1 => 'Primary',
+                2 => 'Secondary',
+                _ => 'Disabled',
+              };
+              return 'Slot ${channel.index} • $role • '
+                  '${channel.name.isEmpty ? '(default)' : channel.name}';
+            }).join('\n')),
         const SizedBox(height: 16),
         DropdownButtonFormField<int>(
           initialValue: _slot,
