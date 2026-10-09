@@ -36,8 +36,10 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
   final String deviceId;
   final StreamController<Uint8List> _incoming =
       StreamController<Uint8List>.broadcast();
+  final StreamController<void> _linkLost = StreamController<void>.broadcast();
 
   StreamSubscription<Uint8List>? _fromNumSubscription;
+  StreamSubscription<bool>? _connectionSubscription;
   bool _connected = false;
   bool _draining = false;
   bool _drainAgain = false;
@@ -47,6 +49,10 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
 
   @override
   bool get isConnected => _connected;
+
+  /// Emits when the peripheral drops an established link without a local
+  /// [disconnect] call, e.g. out of range or radio reboot.
+  Stream<void> get linkLost => _linkLost.stream;
 
   @override
   Future<void> connect() async {
@@ -113,6 +119,10 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
       }
 
       _connected = true;
+      _connectionSubscription =
+          UniversalBle.connectionStream(deviceId).listen((connected) {
+        if (!connected && _connected) unawaited(_handleLinkLoss());
+      });
       await _drainMailbox();
     } catch (_) {
       await UniversalBle.disconnect(deviceId);
@@ -186,9 +196,16 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
     }
   }
 
+  Future<void> _handleLinkLoss() async {
+    await disconnect();
+    if (!_linkLost.isClosed) _linkLost.add(null);
+  }
+
   @override
   Future<void> disconnect() async {
     _connected = false;
+    await _connectionSubscription?.cancel();
+    _connectionSubscription = null;
     await _fromNumSubscription?.cancel();
     _fromNumSubscription = null;
     try {
@@ -210,5 +227,6 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
   Future<void> dispose() async {
     await disconnect();
     await _incoming.close();
+    await _linkLost.close();
   }
 }
