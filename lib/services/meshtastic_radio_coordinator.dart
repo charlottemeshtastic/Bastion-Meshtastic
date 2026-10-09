@@ -6,6 +6,7 @@ import '../generated/meshtastic/apponly.pb.dart';
 import '../generated/meshtastic/channel.pb.dart';
 import '../generated/meshtastic/config.pb.dart';
 import '../generated/meshtastic/mesh.pb.dart' show User;
+import '../generated/meshtastic/module_config.pb.dart';
 import 'bastion_admin_packet_codec.dart';
 import 'bastion_owner_codec.dart';
 import 'bastion_owner_readback.dart';
@@ -402,6 +403,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
   Future<Channel> readChannel(int index) => _requireAdmin().getChannel(index);
 
+  Future<ModuleConfig> readModuleConfig(AdminMessage_ModuleConfigType type) =>
+      _requireAdmin().getModuleConfig(type);
+
   /// Writes are acknowledged by the radio; many make it reboot, after which
   /// the reconnect supervisor restores the link.
   Future<void> writeOwner(User owner) => _requireAdmin().setOwner(owner);
@@ -410,6 +414,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
   Future<void> writeChannel(Channel channel) =>
       _requireAdmin().setChannel(channel);
+
+  Future<void> writeModuleConfig(ModuleConfig config) =>
+      _requireAdmin().setModuleConfig(config);
 
   /// The radio's enabled channels in slot order plus its LoRa config, as
   /// shared in a channel link.
