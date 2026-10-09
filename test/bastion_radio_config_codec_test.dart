@@ -20,6 +20,25 @@ void main() {
         'Channel 0 • Primary • TEST');
   });
 
+  test('decodes safe channel metadata without returning a PSK', () {
+    final channel = Uint8List.fromList([
+      0x08, 0x01, 0x12, 0x0b, 0x12, 0x03, 0x01, 0x02, 0x03,
+      0x1a, 0x04, 0x54, 0x45, 0x53, 0x54, 0x18, 0x02,
+    ]);
+    final metadata = BastionRadioConfigCodec.channelMetadata(channel);
+    expect(metadata.index, 1);
+    expect(metadata.role, 2);
+    expect(metadata.name, 'TEST');
+  });
+
+  test('rejects channel metadata with invalid slot', () {
+    final channel = Uint8List.fromList([
+      0x08, 0x09, 0x12, 0x00, 0x18, 0x02,
+    ]);
+    expect(() => BastionRadioConfigCodec.channelMetadata(channel),
+        throwsFormatException);
+  });
+
   test('rejects truncated protobuf', () {
     expect(() => BastionRadioConfigCodec.fields(Uint8List.fromList([0x12, 0x05, 0x01])),
         throwsFormatException);
