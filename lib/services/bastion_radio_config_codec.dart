@@ -54,6 +54,30 @@ abstract final class BastionRadioConfigCodec {
         'Hop limit: ${values[8] ?? 'not reported'}';
   }
 
+  /// Decode non-secret channel metadata for UI use.
+  /// The raw PSK is intentionally never returned.
+  static ({int index, int role, String name}) channelMetadata(Uint8List channel) {
+    final values = fields(channel);
+    final index = values[1];
+    final role = values[3];
+    final settings = values[2];
+    if (index is! int || index < 0 || index > 7 ||
+        role is! int || role < 0 || role > 2 ||
+        settings is! Uint8List) {
+      throw const FormatException('Invalid channel metadata');
+    }
+    final details = fields(settings);
+    final nameBytes = details[3];
+    if (nameBytes != null && nameBytes is! Uint8List) {
+      throw const FormatException('Invalid channel name');
+    }
+    return (
+      index: index,
+      role: role,
+      name: nameBytes is Uint8List ? utf8.decode(nameBytes) : '',
+    );
+  }
+
   static String channelSummary(Uint8List channel) {
     final values = fields(channel);
     final settings = values[2];
