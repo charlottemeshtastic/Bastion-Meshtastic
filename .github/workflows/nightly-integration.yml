@@ -36,7 +36,11 @@ jobs:
       - name: Validate source
         run: |
           flutter analyze
-          flutter test
+          flutter test --coverage
+      - name: Protocol and coverage reports
+        run: |
+          test -s coverage/lcov.info
+          echo 'Nightly Flutter tests and LCOV coverage completed.' >> "$GITHUB_STEP_SUMMARY"
       - name: Build ARM64 APK
         run: flutter build apk --release --target-platform android-arm64
       - name: Verify APK and record SHA256
@@ -50,5 +54,6 @@ jobs:
           path: |
             build/app/outputs/flutter-apk/app-release.apk
             APK-SHA256.txt
+            coverage/lcov.info
           retention-days: 7
           if-no-files-found: error
