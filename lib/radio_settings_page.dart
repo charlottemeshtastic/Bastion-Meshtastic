@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:protobuf/protobuf.dart';
 
+import 'channel_share_page.dart';
 import 'generated/meshtastic/admin.pb.dart';
 import 'generated/meshtastic/channel.pb.dart';
 import 'generated/meshtastic/config.pb.dart';
@@ -522,7 +523,28 @@ class _ChannelListPageState extends State<_ChannelListPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Channels')),
+        appBar: AppBar(
+          title: const Text('Channels'),
+          actions: [
+            IconButton(
+              tooltip: 'Share as QR code',
+              icon: const Icon(Icons.qr_code),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => ChannelSharePage(radio: widget.radio),
+              )),
+            ),
+            IconButton(
+              tooltip: 'Import channel link',
+              icon: const Icon(Icons.download),
+              onPressed: () async {
+                await Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => ChannelImportPage(radio: widget.radio),
+                ));
+                if (mounted) await _load();
+              },
+            ),
+          ],
+        ),
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
