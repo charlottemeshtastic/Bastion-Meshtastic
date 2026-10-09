@@ -1,0 +1,25 @@
+name: Bastion Release Notes
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: read
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 100
+      - name: Generate changelog
+        run: |
+          mkdir -p release-notes
+          printf '# Bastion changes\n\nCommit: %s\n\n' "$GITHUB_SHA" > release-notes/CHANGES.md
+          git log -n 50 --pretty=format:'- %h %s' >> release-notes/CHANGES.md
+          cat release-notes/CHANGES.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bastion-Release-Notes
+          path: release-notes/CHANGES.md
