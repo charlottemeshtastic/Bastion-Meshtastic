@@ -555,6 +555,7 @@ IconData _deliveryIcon(BastionDeliveryState state) => switch (state) {
   BastionDeliveryState.received => Icons.call_received,
   BastionDeliveryState.queued => Icons.schedule,
   BastionDeliveryState.sent => Icons.check,
+  BastionDeliveryState.delivered => Icons.done_all,
   BastionDeliveryState.failed => Icons.error_outline,
 };
 
@@ -562,6 +563,7 @@ String _deliveryLabel(BastionDeliveryState state) => switch (state) {
   BastionDeliveryState.received => 'RX',
   BastionDeliveryState.queued => 'QUEUED',
   BastionDeliveryState.sent => 'SENT',
+  BastionDeliveryState.delivered => 'DELIVERED',
   BastionDeliveryState.failed => 'FAILED',
 };
 
