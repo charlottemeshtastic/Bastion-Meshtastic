@@ -68,6 +68,73 @@ abstract final class MeshtasticTextCodec {
     );
   }
 
+  /// Parse a routing response correlated with an outgoing direct-message ID.
+  /// Routing error 0 means an ACK; nonzero values are delivery failures.
+  static ({int requestId, int from, int errorReason})? decodeRoutingAck(
+      Uint8List bytes) {
+    var offset = 0;
+    var from = 0;
+    Uint8List? decoded;
+    while (offset < bytes.length) {
+      final tag = _readVarint(bytes, offset);
+      offset = tag.next;
+      final field = tag.value >> 3;
+      final wire = tag.value & 7;
+      if (field == 1 && wire == 5) {
+        from = _readFixed32(bytes, offset);
+        offset += 4;
+      } else if (field == 4 && wire == 2) {
+        final value = _readBytes(bytes, offset);
+        decoded = value.bytes;
+        offset = value.next;
+      } else {
+        offset = _skip(bytes, offset, wire);
+      }
+    }
+    if (decoded == null) return null;
+    offset = 0;
+    var port = 0;
+    var requestId = 0;
+    Uint8List? routing;
+    while (offset < decoded.length) {
+      final tag = _readVarint(decoded, offset);
+      offset = tag.next;
+      final field = tag.value >> 3;
+      final wire = tag.value & 7;
+      if (field == 1 && wire == 0) {
+        final value = _readVarint(decoded, offset);
+        port = value.value;
+        offset = value.next;
+      } else if (field == 2 && wire == 2) {
+        final value = _readBytes(decoded, offset);
+        routing = value.bytes;
+        offset = value.next;
+      } else if (field == 6 && wire == 0) {
+        final value = _readVarint(decoded, offset);
+        requestId = value.value;
+        offset = value.next;
+      } else {
+        offset = _skip(decoded, offset, wire);
+      }
+    }
+    if (port != 5 || requestId == 0 || routing == null) return null;
+    offset = 0;
+    int? errorReason;
+    while (offset < routing.length) {
+      final tag = _readVarint(routing, offset);
+      offset = tag.next;
+      if (tag.value >> 3 == 1 && tag.value & 7 == 0) {
+        final value = _readVarint(routing, offset);
+        errorReason = value.value;
+        offset = value.next;
+      } else {
+        offset = _skip(routing, offset, tag.value & 7);
+      }
+    }
+    if (errorReason == null) return null;
+    return (requestId: requestId, from: from, errorReason: errorReason);
+  }
+
   static Uint8List toRadioText({
     required String text,
     required int destination,
