@@ -109,10 +109,9 @@ abstract final class MeshtasticTextCodec {
         final value = _readBytes(decoded, offset);
         routing = value.bytes;
         offset = value.next;
-      } else if (field == 6 && wire == 0) {
-        final value = _readVarint(decoded, offset);
-        requestId = value.value;
-        offset = value.next;
+      } else if (field == 6 && wire == 5) {
+        requestId = _readFixed32(decoded, offset);
+        offset += 4;
       } else {
         offset = _skip(decoded, offset, wire);
       }
@@ -123,7 +122,7 @@ abstract final class MeshtasticTextCodec {
     while (offset < routing.length) {
       final tag = _readVarint(routing, offset);
       offset = tag.next;
-      if (tag.value >> 3 == 1 && tag.value & 7 == 0) {
+      if ((tag.value >> 3) == 3 && (tag.value & 7) == 0) {
         final value = _readVarint(routing, offset);
         errorReason = value.value;
         offset = value.next;
