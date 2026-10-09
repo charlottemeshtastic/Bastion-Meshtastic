@@ -23,6 +23,7 @@ import 'meshtastic_phoneapi_codec.dart';
 import 'meshtastic_radio_session.dart';
 import 'meshtastic_radio_transport.dart';
 import 'meshtastic_text_codec.dart';
+import 'meshtastic_traceroute.dart';
 
 /// Owns one verified Meshtastic radio session and exposes it to the UI.
 class MeshtasticRadioCoordinator extends ChangeNotifier {
@@ -47,6 +48,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   MeshtasticNodeDatabase? _nodeDatabase;
   MeshtasticMessagingService? _messaging;
   MeshtasticAdminSession? _admin;
+  MeshtasticTraceroute? _traceroute;
   StreamSubscription<List<MeshtasticNode>>? _nodeSubscription;
   StreamSubscription<MeshtasticNode>? _nodeDexSubscription;
   StreamSubscription<void>? _messageSubscription;
@@ -81,6 +83,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
   /// Whether radio settings can be read and written right now.
   bool get canAdminister => !_busy && connection.isReady && _admin != null;
+
+  bool get canTraceroute =>
+      !_busy && connection.isReady && _traceroute != null && !_traceroute!.isRunning;
   MeshtasticNode? get localNode {
     final num = _localNodeNum;
     if (num == null) return null;
@@ -295,6 +300,11 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
           send: session.send,
           localNodeNum: nodeNum,
         );
+        _traceroute = MeshtasticTraceroute(
+          incoming: session.incomingEnvelopes,
+          send: session.send,
+          localNodeNum: nodeNum,
+        );
       }
       await messaging.flush();
 
@@ -399,6 +409,21 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
   Future<void> writeChannel(Channel channel) =>
       _requireAdmin().setChannel(channel);
+
+  /// Traces the mesh route to [nodeNum]. Only one trace runs at a time.
+  Future<TracerouteResult> traceroute(int nodeNum) async {
+    final traceroute = _traceroute;
+    if (!canTraceroute || traceroute == null) {
+      throw StateError('Radio must be ready and idle to run a traceroute.');
+    }
+    final result = traceroute.trace(nodeNum);
+    notifyListeners();
+    try {
+      return await result;
+    } finally {
+      notifyListeners();
+    }
+  }
 
   Future<int> sendText({
     required String text,
@@ -514,6 +539,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     _linkLossSubscription = null;
     await _admin?.dispose();
     _admin = null;
+    await _traceroute?.dispose();
+    _traceroute = null;
     await _handshake?.dispose();
     _handshake = null;
     await _messaging?.dispose();

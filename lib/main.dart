@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'radio_settings_page.dart';
+import 'traceroute_page.dart';
 import 'services/meshtastic_ble_discovery.dart';
 import 'services/meshtastic_connection_controller.dart';
 import 'services/meshtastic_messaging_service.dart';
@@ -696,8 +697,21 @@ class _ToolsPageState extends State<_ToolsPage> {
         trailing: const Icon(Icons.chevron_right),
         onTap: widget.discovery.scanning ? null : widget.discovery.scan,
       )),
-      const Card(child: ListTile(enabled: false, leading: Icon(Icons.route),
-        title: Text('TRACEROUTE'), subtitle: Text('Coming soon — feature not yet implemented'))),
+      AnimatedBuilder(
+        animation: widget.radio,
+        builder: (context, _) => Card(child: ListTile(
+          enabled: widget.radio.isReady,
+          leading: const Icon(Icons.route),
+          title: const Text('TRACEROUTE', style: TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Text(widget.radio.isReady
+            ? 'Show the relay path to a node and back'
+            : 'Connect to a radio to trace routes'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => TraceroutePage(radio: widget.radio),
+          )),
+        )),
+      ),
       AnimatedBuilder(
         animation: widget.radio,
         builder: (context, _) {
