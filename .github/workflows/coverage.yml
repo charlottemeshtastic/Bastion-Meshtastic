@@ -1,0 +1,40 @@
+name: Bastion Test Coverage
+on:
+  push:
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - '.github/workflows/coverage.yml'
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test --coverage --reporter expanded
+      - name: Summarize line coverage
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text=Path('coverage/lcov.info').read_text()
+          found=sum(int(line[3:]) for line in text.splitlines() if line.startswith('LF:'))
+          hit=sum(int(line[3:]) for line in text.splitlines() if line.startswith('LH:'))
+          pct=100*hit/found if found else 0
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write(f'### Dart line coverage: {pct:.1f}% ({hit}/{found})\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bastion-LCOV-${{ github.run_number }}
+          path: coverage/lcov.info
+          retention-days: 30
