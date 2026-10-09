@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 
+import 'bastion_admin_packet_codec.dart';
 import 'bastion_message_archive.dart';
 import 'bastion_radio_config_codec.dart';
 import 'bastion_telemetry_codec.dart';
@@ -252,6 +253,40 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       _busy = false;
       notifyListeners();
     }
+  }
+
+  /// Sends a pre-encoded, authorized AdminMessage to the connected local radio.
+  ///
+  /// This is a low-level transport operation, not a completed settings save.
+  /// Callers must obtain user confirmation, perform any firmware-required admin
+  /// authentication, await the admin response, and verify a fresh readback.
+  /// It deliberately does not queue admin writes while offline.
+  Future<int> sendAuthorizedAdminMessage({
+    required Uint8List adminMessage,
+    required bool userConfirmed,
+    int channel = 0,
+  }) async {
+    if (!userConfirmed) {
+      throw StateError('Radio configuration changes require confirmation.');
+    }
+    if (_busy || !connection.isReady) {
+      throw StateError('Radio must be connected and ready for administration.');
+    }
+    final session = _session;
+    final nodeNum = _localNodeNum;
+    if (session == null || nodeNum == null || nodeNum == 0) {
+      throw StateError('Connected radio identity is not available.');
+    }
+    var packetId = DateTime.now().microsecondsSinceEpoch & 0xffffffff;
+    if (packetId == 0) packetId = 1;
+    final envelope = BastionAdminPacketCodec.toRadio(
+      adminMessage: adminMessage,
+      localNode: nodeNum,
+      packetId: packetId,
+      channel: channel,
+    );
+    await session.send(envelope);
+    return packetId;
   }
 
   Future<int> sendText({
