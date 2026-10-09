@@ -1,7 +1,7 @@
 import 'meshtastic_text_codec.dart';
 
 enum BastionMessageDirection { incoming, outgoing }
-enum BastionDeliveryState { received, queued, sent, failed }
+enum BastionDeliveryState { received, queued, sent, delivered, failed }
 
 class BastionChatMessage {
   const BastionChatMessage({
