@@ -1,0 +1,32 @@
+name: Bastion Protocol Compatibility
+on:
+  push:
+    paths:
+      - 'lib/services/*codec.dart'
+      - 'lib/services/bastion_owner_**'
+      - 'test/**'
+      - '.github/workflows/protocol-compatibility.yml'
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Protocol and admin codec tests
+        run: |
+          find test -type f \( -iname '*codec*test.dart' -o -iname '*owner*test.dart' -o -iname '*phoneapi*test.dart' -o -iname '*packet*test.dart' \) -print > /tmp/bastion-protocol-tests
+          if test -s /tmp/bastion-protocol-tests; then
+            xargs -r flutter test --reporter expanded < /tmp/bastion-protocol-tests
+          else
+            flutter test --reporter expanded
+          fi
