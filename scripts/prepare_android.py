@@ -11,6 +11,7 @@ if 'android.permission.BLUETOOTH_SCAN' not in s:
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.INTERNET" />
 '''
     s=s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
                 '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'+permissions)

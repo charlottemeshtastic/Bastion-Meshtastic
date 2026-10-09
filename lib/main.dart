@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'map_page.dart';
 import 'radio_settings_page.dart';
 import 'traceroute_page.dart';
 import 'services/meshtastic_ble_discovery.dart';
@@ -99,7 +100,7 @@ class _BastionShellState extends State<BastionShell> {
           radio.configureBot(enabled: botMode, reply: value);
         },
       ),
-      const _MapPage(),
+      MapPage(radio: radio),
       _ToolsPage(discovery: ble, radio: radio),
       _SettingsPage(
         radio: radio,
@@ -567,42 +568,6 @@ String _deliveryLabel(BastionDeliveryState state) => switch (state) {
   BastionDeliveryState.delivered => 'DELIVERED',
   BastionDeliveryState.failed => 'FAILED',
 };
-
-class _MapPage extends StatelessWidget {
-  const _MapPage();
-  @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(16),
-    children: [
-      const _Header(icon: Icons.map_outlined, title: 'TACTICAL MAP',
-        detail: 'A field view for mesh positions and coverage. Position pins require node position packets from a connected radio.'),
-      const SizedBox(height: 14),
-      Container(
-        height: 280,
-        decoration: BoxDecoration(color: BastionApp.panel,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: BastionApp.signal.withValues(alpha: .25))),
-        child: const Stack(children: [
-          Center(child: Icon(Icons.terrain, size: 110, color: Colors.white10)),
-          Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.location_off_outlined, size: 42, color: BastionApp.signal),
-            SizedBox(height: 10),
-            Text('WAITING FOR POSITION DATA', style: TextStyle(fontWeight: FontWeight.bold)),
-            SizedBox(height: 5),
-            Text('Connect a Meshtastic radio to populate node pins.',
-              style: TextStyle(color: Colors.white60)),
-          ])),
-        ]),
-      ),
-      const SizedBox(height: 12),
-      const Row(children: [
-        Expanded(child: _Stat(label: 'PINS', value: '0')), SizedBox(width: 10),
-        Expanded(child: _Stat(label: 'TRACKS', value: '0')), SizedBox(width: 10),
-        Expanded(child: _Stat(label: 'COVERAGE', value: '—')),
-      ]),
-    ],
-  );
-}
 
 class _ToolsPage extends StatefulWidget {
   const _ToolsPage({required this.discovery, required this.radio});
