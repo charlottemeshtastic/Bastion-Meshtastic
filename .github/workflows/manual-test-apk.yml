@@ -36,6 +36,14 @@ jobs:
           flutter test
       - name: Build APK
         run: flutter build apk --release --target-platform android-arm64
+      - name: Verify APK and checksum
+        run: |
+          test -s build/app/outputs/flutter-apk/app-release.apk
+          sha256sum build/app/outputs/flutter-apk/app-release.apk > APK-SHA256.txt
+      - name: Generate build change summary
+        run: |
+          git log -n 20 --pretty=format:'- %h %s' > RELEASE-NOTES.txt
+          printf '\n' >> RELEASE-NOTES.txt
       - name: Record build details
         env:
           BUILD_LABEL: ${{ inputs.build_label }}
@@ -50,5 +58,7 @@ jobs:
           path: |
             build/app/outputs/flutter-apk/app-release.apk
             build-details.txt
+            APK-SHA256.txt
+            RELEASE-NOTES.txt
           retention-days: 30
           if-no-files-found: error
