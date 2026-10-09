@@ -39,10 +39,16 @@ jobs:
           flutter test
       - name: Build ARM64 APK
         run: flutter build apk --release --target-platform android-arm64
+      - name: Verify APK and record SHA256
+        run: |
+          test -s build/app/outputs/flutter-apk/app-release.apk
+          sha256sum build/app/outputs/flutter-apk/app-release.apk > APK-SHA256.txt
       - name: Save nightly APK
         uses: actions/upload-artifact@v4
         with:
           name: Bastion-Nightly-${{ github.run_number }}-${{ github.sha }}
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            APK-SHA256.txt
           retention-days: 7
           if-no-files-found: error
