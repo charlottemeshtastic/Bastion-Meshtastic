@@ -30,6 +30,7 @@ import 'meshtastic_ble_discovery.dart';
 import 'meshtastic_connection_controller.dart';
 import 'meshtastic_admin_session.dart';
 import 'meshtastic_handshake.dart';
+import 'meshtastic_mesh_tools.dart';
 import 'meshtastic_messaging_service.dart';
 import 'meshtastic_node_database.dart';
 import 'meshtastic_phoneapi_codec.dart';
@@ -74,6 +75,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   /// A link was lost while Bluetooth was off; reconnect when it returns.
   bool _waitingForBluetooth = false;
   final BastionWaypointStore _waypoints = BastionWaypointStore();
+  final MeshtasticMeshTools _meshTools = MeshtasticMeshTools();
+  StreamSubscription<Uint8List>? _meshToolsSubscription;
   StreamSubscription<Uint8List>? _waypointSubscription;
   static const _sharePreferenceKey = 'bastion.share_phone_location';
   bool _sharePhoneLocation = false;
@@ -333,6 +336,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       _handshake = handshake;
       _linkLossSubscription =
           transport.linkLost.listen((_) => unawaited(_handleLinkLoss()));
+      _meshToolsSubscription = session.incomingEnvelopes.listen((bytes) {
+        if (_meshTools.handleEnvelope(bytes)) notifyListeners();
+      });
       _waypointSubscription = session.incomingEnvelopes.listen((bytes) async {
         try {
           final envelope = pb.FromRadio.fromBuffer(bytes);
@@ -662,6 +668,30 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
   List<MeshWaypoint> get waypoints => _waypoints.waypoints;
 
+  /// Range test packets heard this app session, oldest first.
+  List<RangeTestEntry> get rangeTest => _meshTools.rangeTest;
+
+  void clearRangeTest() {
+    _meshTools.clearRangeTest();
+    notifyListeners();
+  }
+
+  /// Store & Forward servers heard via their heartbeats.
+  List<StoreForwardRouter> get storeForwardRouters => _meshTools.routers;
+  String? get lastStoreForwardReply => _meshTools.lastRouterReply;
+
+  /// Asks [router] to replay messages from the last [window]. Replayed
+  /// messages arrive in Chats like any other message.
+  Future<void> requestStoredMessages(int router, Duration window) async {
+    final session = _session;
+    if (_busy || !connection.isReady || session == null) {
+      throw StateError('Radio must be connected and ready.');
+    }
+    _meshTools.lastRouterReply = null;
+    await session.send(MeshtasticMeshTools.encodeHistoryRequest(router, window));
+    notifyListeners();
+  }
+
   /// Broadcasts [waypoint] on [channel] and keeps it locally.
   Future<void> sendWaypoint(MeshWaypoint waypoint, {int channel = 0}) async {
     final session = _session;
@@ -883,6 +913,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     _linkLossSubscription = null;
     await _waypointSubscription?.cancel();
     _waypointSubscription = null;
+    await _meshToolsSubscription?.cancel();
+    _meshToolsSubscription = null;
     await _sharer?.stop();
     _sharer = null;
     await _admin?.dispose();
