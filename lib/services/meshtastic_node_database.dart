@@ -1,8 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:typed_data';
 
-import 'meshtastic_phoneapi_codec.dart';
+import 'package:protobuf/protobuf.dart';
+
+import '../generated/meshtastic/mesh.pb.dart' as pb;
+import '../generated/meshtastic/portnums.pbenum.dart';
 import 'meshtastic_radio_session.dart';
 
 class MeshtasticNode {
@@ -12,6 +14,14 @@ class MeshtasticNode {
     this.longName,
     this.shortName,
     this.hardwareModel,
+    this.latitude,
+    this.longitude,
+    this.altitudeMeters,
+    this.positionTime,
+    this.lastHeard,
+    this.snr,
+    this.hopsAway,
+    this.batteryLevel,
   });
 
   final int num;
@@ -20,15 +30,70 @@ class MeshtasticNode {
   final String? shortName;
   final int? hardwareModel;
 
+  /// Degrees, WGS84. Both null when the node has not reported a position.
+  final double? latitude;
+  final double? longitude;
+  final int? altitudeMeters;
+
+  /// When the position was taken, as reported by the node.
+  final DateTime? positionTime;
+
+  /// When the radio last heard any packet from this node.
+  final DateTime? lastHeard;
+
+  /// SNR in dB of the last packet heard directly.
+  final double? snr;
+  final int? hopsAway;
+
+  /// 0–100, or 101 when the node is powered externally.
+  final int? batteryLevel;
+
+  bool get hasPosition => latitude != null && longitude != null;
+
   String get displayName => (longName?.isNotEmpty ?? false)
       ? longName!
       : (id ?? '!${num.toRadixString(16).padLeft(8, '0')}');
+
+  MeshtasticNode _copy({
+    String? id,
+    String? longName,
+    String? shortName,
+    int? hardwareModel,
+    double? latitude,
+    double? longitude,
+    int? altitudeMeters,
+    DateTime? positionTime,
+    DateTime? lastHeard,
+    double? snr,
+  }) =>
+      MeshtasticNode(
+        num: num,
+        id: id ?? this.id,
+        longName: longName ?? this.longName,
+        shortName: shortName ?? this.shortName,
+        hardwareModel: hardwareModel ?? this.hardwareModel,
+        latitude: latitude ?? this.latitude,
+        longitude: longitude ?? this.longitude,
+        altitudeMeters: altitudeMeters ?? this.altitudeMeters,
+        positionTime: positionTime ?? this.positionTime,
+        lastHeard: lastHeard ?? this.lastHeard,
+        snr: snr ?? this.snr,
+        hopsAway: hopsAway,
+        batteryLevel: batteryLevel,
+      );
 }
 
+/// Tracks every node the radio reports, plus live updates from the mesh.
+///
+/// The initial node list comes from NodeInfo during the handshake. After
+/// that, position and node-info packets update nodes in place. [nodeUpdates]
+/// fires only for identity updates, not for every packet heard.
 class MeshtasticNodeDatabase {
-  MeshtasticNodeDatabase(this.session);
+  MeshtasticNodeDatabase(this.session, {DateTime Function()? clock})
+      : _clock = clock ?? DateTime.now;
 
   final MeshtasticRadioSession session;
+  final DateTime Function() _clock;
   final Map<int, MeshtasticNode> _nodes = {};
   final StreamController<List<MeshtasticNode>> _changes =
       StreamController<List<MeshtasticNode>>.broadcast();
@@ -47,18 +112,50 @@ class MeshtasticNodeDatabase {
 
   Future<void> start() async {
     await _subscription?.cancel();
-    _subscription = session.incomingEnvelopes.listen(_handleEnvelope);
+    _subscription = session.incomingEnvelopes.listen(handleEnvelope);
   }
 
-  void _handleEnvelope(Uint8List bytes) {
-    final envelope = MeshtasticPhoneApiCodec.decodeFromRadio(bytes);
-    if (envelope.kind != FromRadioPayloadKind.nodeInfo ||
-        envelope.payload == null) {
+  /// Applies one FromRadio envelope. Public for tests.
+  void handleEnvelope(Uint8List bytes) {
+    final pb.FromRadio envelope;
+    try {
+      envelope = pb.FromRadio.fromBuffer(bytes);
+    } on InvalidProtocolBufferException {
       return;
     }
-    final node = MeshtasticNodeInfoCodec.decode(envelope.payload!);
+    if (envelope.hasNodeInfo()) {
+      if (!envelope.nodeInfo.hasNum()) return;
+      _store(MeshtasticNodeInfoCodec.fromProto(envelope.nodeInfo), identity: true);
+    } else if (envelope.hasPacket() && envelope.packet.hasDecoded()) {
+      _handlePacket(envelope.packet);
+    }
+  }
+
+  void _handlePacket(pb.MeshPacket packet) {
+    final from = packet.from;
+    if (from == 0) return;
+    var node = (_nodes[from] ?? MeshtasticNode(num: from))._copy(
+      lastHeard: _clock(),
+      snr: packet.rxSnr != 0 ? packet.rxSnr : null,
+    );
+    var identity = false;
+    final data = packet.decoded;
+    try {
+      if (data.portnum == PortNum.POSITION_APP) {
+        node = MeshtasticNodeInfoCodec.applyPosition(node, pb.Position.fromBuffer(data.payload));
+      } else if (data.portnum == PortNum.NODEINFO_APP) {
+        node = MeshtasticNodeInfoCodec.applyUser(node, pb.User.fromBuffer(data.payload));
+        identity = true;
+      }
+    } on InvalidProtocolBufferException {
+      // Keep the last-heard update; ignore the malformed payload.
+    }
+    _store(node, identity: identity);
+  }
+
+  void _store(MeshtasticNode node, {required bool identity}) {
     _nodes[node.num] = node;
-    _nodeUpdates.add(node);
+    if (identity) _nodeUpdates.add(node);
     _changes.add(nodes);
   }
 
@@ -71,101 +168,55 @@ class MeshtasticNodeDatabase {
 
 abstract final class MeshtasticNodeInfoCodec {
   static MeshtasticNode decode(Uint8List bytes) {
-    final fields = _fields(bytes);
-    final num = fields.varint(1);
-    if (num == null) {
+    final pb.NodeInfo info;
+    try {
+      info = pb.NodeInfo.fromBuffer(bytes);
+    } on InvalidProtocolBufferException catch (error) {
+      throw FormatException('Malformed NodeInfo: ${error.message}');
+    }
+    if (!info.hasNum()) {
       throw const FormatException('NodeInfo is missing node number.');
     }
+    return fromProto(info);
+  }
 
-    final userBytes = fields.bytes(2);
-    String? id;
-    String? longName;
-    String? shortName;
-    int? hardwareModel;
-    if (userBytes != null) {
-      final user = _fields(userBytes);
-      id = user.string(1);
-      longName = user.string(2);
-      shortName = user.string(3);
-      hardwareModel = user.varint(5);
-    }
+  static MeshtasticNode fromProto(pb.NodeInfo info) {
+    var node = MeshtasticNode(
+      num: info.num,
+      lastHeard: info.lastHeard == 0
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(info.lastHeard * 1000, isUtc: true),
+      snr: info.hasSnr() ? info.snr : null,
+      hopsAway: info.hasHopsAway() ? info.hopsAway : null,
+      batteryLevel: info.hasDeviceMetrics() && info.deviceMetrics.hasBatteryLevel()
+          ? info.deviceMetrics.batteryLevel
+          : null,
+    );
+    if (info.hasUser()) node = applyUser(node, info.user);
+    if (info.hasPosition()) node = applyPosition(node, info.position);
+    return node;
+  }
 
-    return MeshtasticNode(
-      num: num,
-      id: id,
-      longName: longName,
-      shortName: shortName,
-      hardwareModel: hardwareModel,
+  static MeshtasticNode applyUser(MeshtasticNode node, pb.User user) => node._copy(
+        id: user.id.isEmpty ? null : user.id,
+        longName: user.longName.isEmpty ? null : user.longName,
+        shortName: user.shortName.isEmpty ? null : user.shortName,
+        hardwareModel: user.hasHwModel() ? user.hwModel.value : null,
+      );
+
+  /// Ignores positions without coordinates and the 0,0 "no fix" value.
+  static MeshtasticNode applyPosition(MeshtasticNode node, pb.Position position) {
+    if (!position.hasLatitudeI() || !position.hasLongitudeI()) return node;
+    final lat = position.latitudeI / 1e7;
+    final lon = position.longitudeI / 1e7;
+    if ((lat == 0 && lon == 0) || lat.abs() > 90 || lon.abs() > 180) return node;
+    return node._copy(
+      latitude: lat,
+      longitude: lon,
+      altitudeMeters: position.hasAltitude() ? position.altitude : null,
+      positionTime: position.time == 0
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(position.time * 1000, isUtc: true),
     );
   }
-
-  static _ProtoFields _fields(Uint8List bytes) {
-    final values = <int, Object>{};
-    var offset = 0;
-    while (offset < bytes.length) {
-      final key = _readVarint(bytes, offset);
-      offset = key.next;
-      final field = key.value >> 3;
-      final wire = key.value & 7;
-      if (wire == 0) {
-        final value = _readVarint(bytes, offset);
-        values[field] = value.value;
-        offset = value.next;
-      } else if (wire == 2) {
-        final length = _readVarint(bytes, offset);
-        offset = length.next;
-        final end = offset + length.value;
-        if (end > bytes.length) {
-          throw const FormatException('Truncated protobuf field.');
-        }
-        values[field] = Uint8List.sublistView(bytes, offset, end);
-        offset = end;
-      } else if (wire == 5) {
-        if (offset + 4 > bytes.length) {
-          throw const FormatException('Truncated fixed32 field.');
-        }
-        offset += 4;
-      } else if (wire == 1) {
-        if (offset + 8 > bytes.length) {
-          throw const FormatException('Truncated fixed64 field.');
-        }
-        offset += 8;
-      } else {
-        throw FormatException('Unsupported protobuf wire type $wire.');
-      }
-    }
-    return _ProtoFields(values);
-  }
-
-  static _Varint _readVarint(Uint8List bytes, int start) {
-    var value = 0;
-    var shift = 0;
-    var offset = start;
-    while (offset < bytes.length && shift < 64) {
-      final byte = bytes[offset++];
-      value |= (byte & 0x7f) << shift;
-      if ((byte & 0x80) == 0) return _Varint(value, offset);
-      shift += 7;
-    }
-    throw const FormatException('Invalid protobuf varint.');
-  }
-}
-
-class _ProtoFields {
-  const _ProtoFields(this.values);
-  final Map<int, Object> values;
-
-  int? varint(int field) => values[field] is int ? values[field] as int : null;
-  Uint8List? bytes(int field) =>
-      values[field] is Uint8List ? values[field] as Uint8List : null;
-  String? string(int field) {
-    final value = bytes(field);
-    return value == null ? null : utf8.decode(value, allowMalformed: true);
-  }
-}
-
-class _Varint {
-  const _Varint(this.value, this.next);
-  final int value;
-  final int next;
 }

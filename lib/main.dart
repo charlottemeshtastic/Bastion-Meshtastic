@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
+import 'map_page.dart';
+import 'node_detail_page.dart';
 import 'radio_settings_page.dart';
+import 'services/bastion_tile_cache.dart';
 import 'traceroute_page.dart';
 import 'services/meshtastic_ble_discovery.dart';
 import 'services/meshtastic_connection_controller.dart';
 import 'services/meshtastic_messaging_service.dart';
 import 'services/meshtastic_radio_coordinator.dart';
 
-void main() => runApp(const BastionApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await BastionTileCache.initialize();
+  runApp(const BastionApp());
+}
 
 class BastionApp extends StatelessWidget {
   const BastionApp({super.key});
@@ -99,7 +106,7 @@ class _BastionShellState extends State<BastionShell> {
           radio.configureBot(enabled: botMode, reply: value);
         },
       ),
-      const _MapPage(),
+      MapPage(radio: radio),
       _ToolsPage(discovery: ble, radio: radio),
       _SettingsPage(
         radio: radio,
@@ -210,9 +217,10 @@ class _NodesPage extends StatelessWidget {
                 if (node.shortName?.isNotEmpty ?? false) node.shortName!,
                 node.id ?? '!${node.num.toRadixString(16).padLeft(8, '0')}',
               ].join(' • ')),
-              trailing: node.hardwareModel == null
-                  ? null
-                  : Text('HW ${node.hardwareModel}'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => NodeDetailPage(radio: radio, nodeNum: node.num),
+              )),
             )),
         ],
         if (radio.isReady) ...[
@@ -568,42 +576,6 @@ String _deliveryLabel(BastionDeliveryState state) => switch (state) {
   BastionDeliveryState.failed => 'FAILED',
 };
 
-class _MapPage extends StatelessWidget {
-  const _MapPage();
-  @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(16),
-    children: [
-      const _Header(icon: Icons.map_outlined, title: 'TACTICAL MAP',
-        detail: 'A field view for mesh positions and coverage. Position pins require node position packets from a connected radio.'),
-      const SizedBox(height: 14),
-      Container(
-        height: 280,
-        decoration: BoxDecoration(color: BastionApp.panel,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: BastionApp.signal.withValues(alpha: .25))),
-        child: const Stack(children: [
-          Center(child: Icon(Icons.terrain, size: 110, color: Colors.white10)),
-          Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.location_off_outlined, size: 42, color: BastionApp.signal),
-            SizedBox(height: 10),
-            Text('WAITING FOR POSITION DATA', style: TextStyle(fontWeight: FontWeight.bold)),
-            SizedBox(height: 5),
-            Text('Connect a Meshtastic radio to populate node pins.',
-              style: TextStyle(color: Colors.white60)),
-          ])),
-        ]),
-      ),
-      const SizedBox(height: 12),
-      const Row(children: [
-        Expanded(child: _Stat(label: 'PINS', value: '0')), SizedBox(width: 10),
-        Expanded(child: _Stat(label: 'TRACKS', value: '0')), SizedBox(width: 10),
-        Expanded(child: _Stat(label: 'COVERAGE', value: '—')),
-      ]),
-    ],
-  );
-}
-
 class _ToolsPage extends StatefulWidget {
   const _ToolsPage({required this.discovery, required this.radio});
   final MeshtasticBleDiscovery discovery;
@@ -813,6 +785,30 @@ class _SettingsPage extends StatelessWidget {
           ],
         )),
       ),
+      AnimatedBuilder(
+        animation: radio,
+        builder: (context, _) {
+          final sent = radio.lastPhonePositionSent;
+          final status = radio.locationShareProblem ??
+              (!radio.sharePhoneLocation
+                  ? 'Off. Your phone location is never sent.'
+                  : !radio.isReady
+                      ? 'On. Starts when a radio is connected.'
+                      : sent == null
+                          ? 'On. Waiting for a GPS fix.'
+                          : 'On. Last sent ${sent.toLocal().toString().substring(11, 16)}.');
+          return Card(child: SwitchListTile(
+            secondary: const Icon(Icons.share_location),
+            title: const Text('Share phone location with mesh'),
+            subtitle: Text('$status\nThe radio broadcasts it when it has no GPS of its own. '
+                'Updates every 5 min, or sooner when you move.'),
+            isThreeLine: true,
+            value: radio.sharePhoneLocation,
+            onChanged: (value) => radio.setSharePhoneLocation(value),
+          ));
+        },
+      ),
+      const _MapCacheCard(),
       Card(child: SwitchListTile(
         secondary: const Icon(Icons.battery_saver_outlined),
         title: const Text('Low-power field mode'),
@@ -961,3 +957,36 @@ String _connectionLabel(MeshtasticConnectionState state) => switch (state) {
   MeshtasticConnectionState.ready => 'CONNECTED',
   MeshtasticConnectionState.error => 'ERROR',
 };
+
+class _MapCacheCard extends StatefulWidget {
+  const _MapCacheCard();
+
+  @override
+  State<_MapCacheCard> createState() => _MapCacheCardState();
+}
+
+class _MapCacheCardState extends State<_MapCacheCard> {
+  late Future<int?> _size = BastionTileCache.sizeBytes();
+
+  @override
+  Widget build(BuildContext context) => Card(child: FutureBuilder<int?>(
+    future: _size,
+    builder: (context, snapshot) {
+      final bytes = snapshot.data;
+      return ListTile(
+        leading: const Icon(Icons.offline_pin_outlined),
+        title: const Text('Offline map tiles'),
+        subtitle: Text('${bytes == null ? 'Size unknown' : '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB saved'}'
+          '\nMap areas you view online stay available offline for a year (up to 500 MB).'),
+        isThreeLine: true,
+        trailing: TextButton(
+          onPressed: bytes == null || bytes == 0 ? null : () async {
+            await BastionTileCache.clear();
+            if (mounted) setState(() => _size = BastionTileCache.sizeBytes());
+          },
+          child: const Text('Clear'),
+        ),
+      );
+    },
+  ));
+}

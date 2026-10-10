@@ -6,16 +6,19 @@ import 'services/meshtastic_traceroute.dart';
 
 /// Picks a mesh node and shows the route to it and back with per-hop SNR.
 class TraceroutePage extends StatefulWidget {
-  const TraceroutePage({super.key, required this.radio});
+  const TraceroutePage({super.key, required this.radio, this.initialTarget});
 
   final MeshtasticRadioCoordinator radio;
+
+  /// Node to preselect, e.g. when opened from a node's detail screen.
+  final int? initialTarget;
 
   @override
   State<TraceroutePage> createState() => _TraceroutePageState();
 }
 
 class _TraceroutePageState extends State<TraceroutePage> {
-  int? _target;
+  late int? _target = widget.initialTarget;
   TracerouteResult? _result;
   Object? _error;
   bool _running = false;

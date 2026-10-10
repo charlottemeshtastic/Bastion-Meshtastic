@@ -1,14 +1,22 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
+import 'package:flutter/widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../generated/meshtastic/admin.pb.dart';
 import '../generated/meshtastic/apponly.pb.dart';
 import '../generated/meshtastic/channel.pb.dart';
 import '../generated/meshtastic/config.pb.dart';
+import '../generated/meshtastic/mesh.pb.dart' as pb show Data, FromRadio, MeshPacket, Position, ToRadio;
 import '../generated/meshtastic/mesh.pb.dart' show User;
 import '../generated/meshtastic/module_config.pb.dart';
+import '../generated/meshtastic/portnums.pbenum.dart';
+import '../generated/meshtastic/telemetry.pb.dart';
 import 'bastion_admin_packet_codec.dart';
 import 'bastion_background_service.dart';
+import 'bastion_message_alerts.dart';
+import 'bastion_phone_position.dart';
+import 'bastion_waypoints.dart';
 import 'bastion_owner_codec.dart';
 import 'bastion_owner_readback.dart';
 import 'bastion_message_archive.dart';
@@ -30,8 +38,18 @@ import 'meshtastic_traceroute.dart';
 
 /// Owns one verified Meshtastic radio session and exposes it to the UI.
 class MeshtasticRadioCoordinator extends ChangeNotifier {
-  MeshtasticRadioCoordinator({BastionBackgroundKeeper? background})
-      : _background = background ?? BastionForegroundService() {
+  MeshtasticRadioCoordinator({
+    BastionBackgroundKeeper? background,
+    BastionMessageAlerts? alerts,
+    PhoneLocationSource? location,
+  })  : _background = background ?? BastionForegroundService(),
+        _alerts = alerts ?? BastionLocalMessageAlerts(),
+        _location = location ?? GeolocatorLocationSource() {
+    unawaited(_loadSharePreference());
+    unawaited(_waypoints.load().then((_) => notifyListeners()));
+    _lifecycle = AppLifecycleListener(
+      onStateChange: (state) => _inForeground = state == AppLifecycleState.resumed,
+    );
     connection.addListener(_relayConnectionChange);
     unawaited(_loadArchive());
     unawaited(_loadNodeDex());
@@ -42,6 +60,16 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   final BastionMessageArchive _archive = BastionMessageArchive();
   final BastionNodeDex _nodeDex = BastionNodeDex();
   final BastionBackgroundKeeper _background;
+  final BastionMessageAlerts _alerts;
+  final PhoneLocationSource _location;
+  final BastionWaypointStore _waypoints = BastionWaypointStore();
+  StreamSubscription<Uint8List>? _waypointSubscription;
+  static const _sharePreferenceKey = 'bastion.share_phone_location';
+  bool _sharePhoneLocation = false;
+  BastionPhonePositionSharer? _sharer;
+  String? _locationShareProblem;
+  late final AppLifecycleListener _lifecycle;
+  bool _inForeground = true;
   late final BastionReconnectSupervisor _reconnect =
       BastionReconnectSupervisor(
     reconnect: _reconnectLastDevice,
@@ -59,6 +87,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   StreamSubscription<void>? _messageSubscription;
   StreamSubscription<Uint8List>? _identitySubscription;
   StreamSubscription<void>? _linkLossSubscription;
+  StreamSubscription<MeshtasticTextMessage>? _incomingSubscription;
   MeshtasticBleDevice? _lastDevice;
   bool _userDisconnected = false;
   List<MeshtasticNode> _nodes = const [];
@@ -88,6 +117,59 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
   /// Whether radio settings can be read and written right now.
   bool get canAdminister => !_busy && connection.isReady && _admin != null;
+
+  /// Whether the phone's location is sent to the radio for broadcasting.
+  bool get sharePhoneLocation => _sharePhoneLocation;
+
+  /// Why sharing is not running, e.g. permission denied; null when fine.
+  String? get locationShareProblem => _locationShareProblem;
+  DateTime? get lastPhonePositionSent => _sharer?.lastSentAt;
+
+  Future<void> setSharePhoneLocation(bool enabled) async {
+    _sharePhoneLocation = enabled;
+    _locationShareProblem = null;
+    notifyListeners();
+    try {
+      await SharedPreferencesAsync().setBool(_sharePreferenceKey, enabled);
+    } catch (_) {
+      // Preference storage is best effort.
+    }
+    if (enabled) {
+      await _startSharing();
+    } else {
+      await _sharer?.stop();
+      _sharer = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _loadSharePreference() async {
+    try {
+      _sharePhoneLocation =
+          await SharedPreferencesAsync().getBool(_sharePreferenceKey) ?? false;
+      notifyListeners();
+    } catch (_) {
+      // Default stays off.
+    }
+  }
+
+  Future<void> _startSharing() async {
+    final session = _session;
+    final nodeNum = _localNodeNum;
+    if (!_sharePhoneLocation || session == null || nodeNum == null || !connection.isReady) {
+      return;
+    }
+    if (_sharer?.isRunning ?? false) return;
+    final sharer = BastionPhonePositionSharer(
+      source: _location,
+      send: session.send,
+      localNodeNum: nodeNum,
+    );
+    _sharer = sharer;
+    _locationShareProblem = await sharer.start();
+    if (_locationShareProblem != null) _sharer = null;
+    notifyListeners();
+  }
 
   bool get canTraceroute =>
       !_busy && connection.isReady && _traceroute != null && !_traceroute!.isRunning;
@@ -229,6 +311,16 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       _handshake = handshake;
       _linkLossSubscription =
           transport.linkLost.listen((_) => unawaited(_handleLinkLoss()));
+      _waypointSubscription = session.incomingEnvelopes.listen((bytes) async {
+        try {
+          final envelope = pb.FromRadio.fromBuffer(bytes);
+          if (envelope.hasPacket() && await _waypoints.handlePacket(envelope.packet)) {
+            notifyListeners();
+          }
+        } catch (_) {
+          // Malformed frames are handled by the other decoders.
+        }
+      });
 
       _identitySubscription = session.incomingEnvelopes.listen((bytes) {
         final envelope = MeshtasticPhoneApiCodec.decodeFromRadio(bytes);
@@ -300,6 +392,10 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
         _syncMessageSnapshot(messaging);
         notifyListeners();
       });
+      _incomingSubscription = messaging.incoming.listen(
+        _alertIncoming,
+        onError: (Object _) {},
+      );
 
       await session.connect(deviceName: device.name);
       await handshake.synchronize();
@@ -317,6 +413,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
         );
       }
       await messaging.flush();
+      unawaited(_startSharing());
 
       _nodes = nodeDatabase.nodes;
       _syncMessageSnapshot(messaging);
@@ -495,6 +592,77 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     return true;
   }
 
+  /// Asks [nodeNum] to send its position. The reply updates [nodes].
+  ///
+  /// Like the official apps, the request carries this radio's own position
+  /// when one is known, so the other node learns where we are too.
+  Future<void> requestPosition(int nodeNum) {
+    final own = localNode;
+    return _requestFrom(
+      nodeNum,
+      PortNum.POSITION_APP,
+      (own != null && own.hasPosition
+              ? pb.Position(
+                  latitudeI: (own.latitude! * 1e7).round(),
+                  longitudeI: (own.longitude! * 1e7).round(),
+                )
+              : pb.Position())
+          .writeToBuffer(),
+    );
+  }
+
+  /// Asks [nodeNum] for device telemetry. The reply updates [deviceTelemetry].
+  Future<void> requestTelemetry(int nodeNum) => _requestFrom(
+        nodeNum,
+        PortNum.TELEMETRY_APP,
+        Telemetry(deviceMetrics: DeviceMetrics()).writeToBuffer(),
+      );
+
+  Future<void> _requestFrom(int nodeNum, PortNum port, List<int> payload) async {
+    final session = _session;
+    if (_busy || !connection.isReady || session == null) {
+      throw StateError('Radio must be connected and ready.');
+    }
+    if (nodeNum == _localNodeNum) {
+      throw ArgumentError.value(nodeNum, 'nodeNum', 'is this radio');
+    }
+    var id = DateTime.now().microsecondsSinceEpoch & 0x7fffffff;
+    if (id == 0) id = 1;
+    await session.send(pb.ToRadio(
+      packet: pb.MeshPacket(
+        to: nodeNum,
+        id: id,
+        wantAck: true,
+        decoded: pb.Data(portnum: port, payload: payload, wantResponse: true),
+      ),
+    ).writeToBuffer());
+  }
+
+  List<MeshWaypoint> get waypoints => _waypoints.waypoints;
+
+  /// Broadcasts [waypoint] on [channel] and keeps it locally.
+  Future<void> sendWaypoint(MeshWaypoint waypoint, {int channel = 0}) async {
+    final session = _session;
+    if (_busy || !connection.isReady || session == null) {
+      throw StateError('Radio must be connected and ready.');
+    }
+    await session.send(BastionWaypointStore.encode(waypoint, channel: channel));
+    await _waypoints.apply(waypoint);
+    notifyListeners();
+  }
+
+  /// Whether this radio may change or delete [waypoint].
+  bool canEditWaypoint(MeshWaypoint waypoint) =>
+      waypoint.lockedTo == 0 || waypoint.lockedTo == _localNodeNum;
+
+  /// Removes [waypoint] for everyone by broadcasting it as expired.
+  Future<void> deleteWaypoint(MeshWaypoint waypoint, {int channel = 0}) async {
+    if (!canEditWaypoint(waypoint)) {
+      throw StateError('This waypoint is locked to another node.');
+    }
+    await sendWaypoint(BastionWaypointStore.deletion(waypoint), channel: channel);
+  }
+
   /// Traces the mesh route to [nodeNum]. Only one trace runs at a time.
   Future<TracerouteResult> traceroute(int nodeNum) async {
     final traceroute = _traceroute;
@@ -565,6 +733,28 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     return packetId;
   }
 
+  /// Notifies about a message that arrives while the app is backgrounded.
+  void _alertIncoming(MeshtasticTextMessage message) {
+    if (_inForeground) return;
+    String sender = '!${message.from.toRadixString(16).padLeft(8, '0')}';
+    for (final node in _nodes) {
+      if (node.num == message.from) sender = node.displayName;
+    }
+    unawaited(_alerts.show(
+      packetId: message.packetId,
+      sender: sender,
+      text: message.text,
+      isDirect: !message.isBroadcast,
+      channel: message.channel,
+    ));
+  }
+
+  @visibleForTesting
+  set inForeground(bool value) => _inForeground = value;
+
+  @visibleForTesting
+  void alertIncomingForTest(MeshtasticTextMessage message) => _alertIncoming(message);
+
   /// Tears down a dropped session and retries the last radio with backoff.
   Future<void> _handleLinkLoss() async {
     final device = _lastDevice;
@@ -621,10 +811,16 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     _nodeDexSubscription = null;
     await _messageSubscription?.cancel();
     _messageSubscription = null;
+    await _incomingSubscription?.cancel();
+    _incomingSubscription = null;
     await _identitySubscription?.cancel();
     _identitySubscription = null;
     await _linkLossSubscription?.cancel();
     _linkLossSubscription = null;
+    await _waypointSubscription?.cancel();
+    _waypointSubscription = null;
+    await _sharer?.stop();
+    _sharer = null;
     await _admin?.dispose();
     _admin = null;
     await _traceroute?.dispose();
@@ -650,6 +846,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     _userDisconnected = true;
     _reconnect.cancel();
     unawaited(_background.release());
