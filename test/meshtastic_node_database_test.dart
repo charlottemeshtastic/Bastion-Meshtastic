@@ -131,6 +131,23 @@ void main() {
       expect(identityUpdates.single.shortName, 'BC');
     });
 
+    test('records which nodes a node hears directly', () async {
+      db.handleEnvelope(packet(0x10, PortNum.NEIGHBORINFO_APP, pb.NeighborInfo(
+        nodeId: 0x10,
+        neighbors: [
+          pb.Neighbor(nodeId: 0x20, snr: 7.25),
+          pb.Neighbor(nodeId: 0x30, snr: -4.5),
+          pb.Neighbor(nodeId: 0x10, snr: 1),
+        ],
+      ).writeToBuffer()));
+      await Future<void>.delayed(Duration.zero);
+      final report = db.neighborReports[0x10]!;
+      expect(report.receivedAt, heardAt);
+      expect(report.neighbors.map((n) => n.nodeNum), [0x20, 0x30], reason: 'self-links dropped');
+      expect(report.neighbors.first.snr, 7.25);
+      expect(identityUpdates, isEmpty);
+    });
+
     test('malformed envelopes are ignored', () {
       db.handleEnvelope(Uint8List.fromList([0xff, 0xff]));
       expect(db.nodes, isEmpty);

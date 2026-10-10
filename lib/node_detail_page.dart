@@ -206,6 +206,7 @@ class _NodeDetailPageState extends State<NodeDetailPage> {
                     ],
                   ),
                 ],
+                _NeighborCard(radio: _radio, nodeNum: widget.nodeNum),
                 const SizedBox(height: 8),
                 Card(
                   child: ListTile(
@@ -278,4 +279,60 @@ class _Row extends StatelessWidget {
           ],
         ),
       );
+}
+
+/// Direct radio links for one node, from Neighbor Info reports in both
+/// directions: nodes it reports hearing, and nodes that report hearing it.
+class _NeighborCard extends StatelessWidget {
+  const _NeighborCard({required this.radio, required this.nodeNum});
+
+  final MeshtasticRadioCoordinator radio;
+  final int nodeNum;
+
+  String _name(int num) {
+    for (final node in radio.nodes) {
+      if (node.num == num) return node.displayName;
+    }
+    return '!${num.toRadixString(16).padLeft(8, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reports = radio.neighborReports;
+    final own = reports[nodeNum];
+    final heardBy = [
+      for (final report in reports.values)
+        for (final n in report.neighbors)
+          if (n.nodeNum == nodeNum && report.nodeNum != nodeNum) (nodeNum: report.nodeNum, snr: n.snr),
+    ];
+    String line(({int nodeNum, double snr}) n) => '${_name(n.nodeNum)} • ${n.snr.toStringAsFixed(1)} dB';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('DIRECT RADIO LINKS', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            if (own == null && heardBy.isEmpty)
+              const Text(
+                'No neighbor reports yet. Nodes share these when the Neighbor Info '
+                'module is enabled (Settings → Change radio settings → Neighborinfo).',
+                style: TextStyle(color: Colors.white60),
+              ),
+            if (own != null) ...[
+              Text('Hears directly (${own.neighbors.length}):'),
+              for (final n in own.neighbors) Text('  ${line(n)}'),
+              if (own.neighbors.isEmpty) const Text('  No neighbors reported'),
+            ],
+            if (heardBy.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('Heard directly by (${heardBy.length}):'),
+              for (final n in heardBy) Text('  ${line(n)}'),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }

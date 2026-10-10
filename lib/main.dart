@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'map_page.dart';
+import 'mesh_tools_page.dart';
 import 'node_detail_page.dart';
 import 'radio_settings_page.dart';
 import 'services/bastion_tile_cache.dart';
@@ -668,6 +669,24 @@ class _ToolsPageState extends State<_ToolsPage> {
         subtitle: Text('${widget.discovery.results.length} BLE devices currently discovered'),
         trailing: const Icon(Icons.chevron_right),
         onTap: widget.discovery.scanning ? null : widget.discovery.scan,
+      )),
+      Card(child: ListTile(
+        leading: const Icon(Icons.network_check),
+        title: const Text('RANGE TEST', style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: const Text('Log packets from a range test sender with signal and distance'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => MeshToolsPage(radio: widget.radio),
+        )),
+      )),
+      Card(child: ListTile(
+        leading: const Icon(Icons.inventory_2_outlined),
+        title: const Text('STORE & FORWARD', style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: const Text('Replay messages you missed from a router'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => MeshToolsPage(radio: widget.radio, initialTab: 1),
+        )),
       )),
       AnimatedBuilder(
         animation: widget.radio,
