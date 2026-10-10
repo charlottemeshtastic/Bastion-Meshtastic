@@ -83,6 +83,21 @@ class MeshtasticNode {
       );
 }
 
+/// Which nodes one node hears directly, from its NEIGHBORINFO_APP broadcast.
+class MeshNeighborReport {
+  const MeshNeighborReport({
+    required this.nodeNum,
+    required this.receivedAt,
+    required this.neighbors,
+  });
+
+  final int nodeNum;
+  final DateTime receivedAt;
+
+  /// Directly heard nodes with the SNR (dB) of their last packet.
+  final List<({int nodeNum, double snr})> neighbors;
+}
+
 /// Tracks every node the radio reports, plus live updates from the mesh.
 ///
 /// The initial node list comes from NodeInfo during the handshake. After
@@ -95,6 +110,7 @@ class MeshtasticNodeDatabase {
   final MeshtasticRadioSession session;
   final DateTime Function() _clock;
   final Map<int, MeshtasticNode> _nodes = {};
+  final Map<int, MeshNeighborReport> _neighborReports = {};
   final StreamController<List<MeshtasticNode>> _changes =
       StreamController<List<MeshtasticNode>>.broadcast();
   final StreamController<MeshtasticNode> _nodeUpdates =
@@ -106,6 +122,9 @@ class MeshtasticNodeDatabase {
       ..sort((a, b) => a.displayName.compareTo(b.displayName));
     return List.unmodifiable(values);
   }
+
+  /// Latest neighbor report per reporting node.
+  Map<int, MeshNeighborReport> get neighborReports => Map.unmodifiable(_neighborReports);
 
   Stream<List<MeshtasticNode>> get changes => _changes.stream;
   Stream<MeshtasticNode> get nodeUpdates => _nodeUpdates.stream;
@@ -146,6 +165,17 @@ class MeshtasticNodeDatabase {
       } else if (data.portnum == PortNum.NODEINFO_APP) {
         node = MeshtasticNodeInfoCodec.applyUser(node, pb.User.fromBuffer(data.payload));
         identity = true;
+      } else if (data.portnum == PortNum.NEIGHBORINFO_APP) {
+        final info = pb.NeighborInfo.fromBuffer(data.payload);
+        final reporter = info.nodeId == 0 ? from : info.nodeId;
+        _neighborReports[reporter] = MeshNeighborReport(
+          nodeNum: reporter,
+          receivedAt: _clock(),
+          neighbors: [
+            for (final n in info.neighbors)
+              if (n.nodeId != 0 && n.nodeId != reporter) (nodeNum: n.nodeId, snr: n.snr),
+          ],
+        );
       }
     } on InvalidProtocolBufferException {
       // Keep the last-heard update; ignore the malformed payload.

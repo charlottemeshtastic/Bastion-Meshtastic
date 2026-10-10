@@ -188,6 +188,11 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Latest neighbor report per node, for nodes running the Neighbor Info
+  /// module. Cleared when the radio disconnects.
+  Map<int, MeshNeighborReport> get neighborReports =>
+      _nodeDatabase?.neighborReports ?? const {};
+
   bool get canTraceroute =>
       !_busy && connection.isReady && _traceroute != null && !_traceroute!.isRunning;
   MeshtasticNode? get localNode {

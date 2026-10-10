@@ -26,6 +26,30 @@ class MapPage extends StatefulWidget {
 class _MapPageState extends State<MapPage> {
   final MapController _map = MapController();
   bool _fitted = false;
+  bool _showLinks = true;
+
+  /// One line per pair of placed nodes that a Neighbor Info report links.
+  List<Polyline> _links(List<MeshtasticNode> placed) {
+    final byNum = {for (final n in placed) n.num: n};
+    final seen = <(int, int)>{};
+    final lines = <Polyline>[];
+    for (final report in widget.radio.neighborReports.values) {
+      final a = byNum[report.nodeNum];
+      if (a == null) continue;
+      for (final neighbor in report.neighbors) {
+        final b = byNum[neighbor.nodeNum];
+        if (b == null) continue;
+        final key = a.num < b.num ? (a.num, b.num) : (b.num, a.num);
+        if (!seen.add(key)) continue;
+        lines.add(Polyline(
+          points: [LatLng(a.latitude!, a.longitude!), LatLng(b.latitude!, b.longitude!)],
+          strokeWidth: 2.5,
+          color: MapPage.accent.withValues(alpha: neighbor.snr >= 0 ? 0.9 : 0.45),
+        ));
+      }
+    }
+    return lines;
+  }
 
   @override
   void dispose() {
@@ -80,6 +104,7 @@ class _MapPageState extends State<MapPage> {
                     userAgentPackageName: 'org.backcountrysignal.bastion',
                     maxNativeZoom: 19,
                   ),
+                  if (_showLinks) PolylineLayer(polylines: _links(placed)),
                   MarkerLayer(
                     markers: [
                       for (final waypoint in widget.radio.waypoints)
@@ -130,6 +155,12 @@ class _MapPageState extends State<MapPage> {
                                     '\nLong-press the map to drop a waypoint',
                           ),
                         ),
+                        if (widget.radio.neighborReports.isNotEmpty)
+                          IconButton(
+                            tooltip: _showLinks ? 'Hide radio links' : 'Show radio links',
+                            icon: Icon(_showLinks ? Icons.hub : Icons.hub_outlined),
+                            onPressed: () => setState(() => _showLinks = !_showLinks),
+                          ),
                         if (placed.isNotEmpty)
                           IconButton(
                             tooltip: 'Show all nodes',
