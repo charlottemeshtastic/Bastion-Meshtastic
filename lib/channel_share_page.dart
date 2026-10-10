@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'generated/meshtastic/apponly.pb.dart';
+import 'qr_scan_page.dart';
 import 'services/meshtastic_channel_url.dart';
 import 'services/meshtastic_radio_coordinator.dart';
 
@@ -166,6 +167,19 @@ class _ChannelImportPageState extends State<ChannelImportPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          FilledButton.tonalIcon(
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('Scan channel QR code'),
+            onPressed: () async {
+              final scanned = await Navigator.of(context).push<String>(
+                MaterialPageRoute(builder: (_) => const QrScanPage(title: 'Scan channel QR')),
+              );
+              if (scanned == null || !mounted) return;
+              _link.text = scanned;
+              _parse(scanned);
+            },
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: _link,
             minLines: 2,
