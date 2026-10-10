@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 
 import 'node_detail_page.dart';
 import 'services/bastion_geo.dart';
+import 'services/bastion_waypoints.dart';
 import 'services/meshtastic_node_database.dart';
 import 'services/meshtastic_radio_coordinator.dart';
 
@@ -65,12 +66,13 @@ class _MapPageState extends State<MapPage> {
             children: [
               FlutterMap(
                 mapController: _map,
-                options: const MapOptions(
-                  initialCenter: LatLng(39.5, -98.35),
+                options: MapOptions(
+                  initialCenter: const LatLng(39.5, -98.35),
                   initialZoom: 3,
-                  interactionOptions: InteractionOptions(
+                  interactionOptions: const InteractionOptions(
                     flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                   ),
+                  onLongPress: (_, point) => _createWaypoint(context, point),
                 ),
                 children: [
                   TileLayer(
@@ -80,6 +82,16 @@ class _MapPageState extends State<MapPage> {
                   ),
                   MarkerLayer(
                     markers: [
+                      for (final waypoint in widget.radio.waypoints)
+                        Marker(
+                          point: LatLng(waypoint.latitude, waypoint.longitude),
+                          width: 120,
+                          height: 56,
+                          child: _WaypointPin(
+                            waypoint: waypoint,
+                            onTap: () => _showWaypoint(context, waypoint),
+                          ),
+                        ),
                       for (final node in placed)
                         Marker(
                           point: LatLng(node.latitude!, node.longitude!),
@@ -113,7 +125,9 @@ class _MapPageState extends State<MapPage> {
                                 ? (widget.radio.isReady
                                     ? 'No node has reported a position yet'
                                     : 'Connect a radio to show node positions')
-                                : '${placed.length} of ${widget.radio.nodes.length} nodes placed',
+                                : '${placed.length} of ${widget.radio.nodes.length} nodes placed'
+                                    '${widget.radio.waypoints.isEmpty ? '' : ' • ${widget.radio.waypoints.length} waypoints'}'
+                                    '\nLong-press the map to drop a waypoint',
                           ),
                         ),
                         if (placed.isNotEmpty)
@@ -131,6 +145,79 @@ class _MapPageState extends State<MapPage> {
           );
         },
       );
+
+  Future<void> _createWaypoint(BuildContext context, LatLng point) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (!widget.radio.isReady) {
+      messenger.showSnackBar(const SnackBar(content: Text('Connect a radio to share waypoints.')));
+      return;
+    }
+    final waypoint = await showDialog<MeshWaypoint>(
+      context: context,
+      builder: (_) => _WaypointDialog(point: point, localNodeNum: widget.radio.localNodeNum),
+    );
+    if (waypoint == null) return;
+    try {
+      await widget.radio.sendWaypoint(waypoint);
+      messenger.showSnackBar(SnackBar(content: Text('Waypoint "${waypoint.name}" shared on channel 0.')));
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('Could not share waypoint: $error')));
+    }
+  }
+
+  void _showWaypoint(BuildContext context, MeshWaypoint waypoint) {
+    String? sender;
+    if (waypoint.from != null) {
+      sender = '!${waypoint.from!.toRadixString(16).padLeft(8, '0')}';
+      for (final node in widget.radio.nodes) {
+        if (node.num == waypoint.from) sender = node.displayName;
+      }
+    }
+    final canDelete = widget.radio.isReady && widget.radio.canEditWaypoint(waypoint);
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${waypoint.iconText} ${waypoint.name}',
+                  style: Theme.of(sheetContext).textTheme.titleLarge),
+              if (waypoint.description.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(waypoint.description),
+              ],
+              const SizedBox(height: 12),
+              Text('${waypoint.latitude.toStringAsFixed(5)}, ${waypoint.longitude.toStringAsFixed(5)}'),
+              Text(waypoint.expires == null
+                  ? 'Never expires'
+                  : 'Expires ${waypoint.expires!.toLocal().toString().substring(0, 16)}'),
+              if (sender != null) Text('Shared by $sender'),
+              if (waypoint.lockedTo != 0) const Text('Locked to its creator'),
+              const SizedBox(height: 12),
+              if (canDelete)
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Delete for everyone'),
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    Navigator.of(sheetContext).pop();
+                    try {
+                      await widget.radio.deleteWaypoint(waypoint);
+                      messenger.showSnackBar(SnackBar(content: Text('Deleted "${waypoint.name}".')));
+                    } catch (error) {
+                      messenger.showSnackBar(SnackBar(content: Text('Could not delete: $error')));
+                    }
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   void _showNode(BuildContext context, MeshtasticNode node) {
     final localNode = widget.radio.localNode;
@@ -235,6 +322,150 @@ class _NodePin extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _WaypointPin extends StatelessWidget {
+  const _WaypointPin({required this.waypoint, required this.onTap});
+
+  final MeshWaypoint waypoint;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        button: true,
+        label: 'Waypoint ${waypoint.name}',
+        child: GestureDetector(
+          onTap: onTap,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(waypoint.iconText, style: const TextStyle(fontSize: 26)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                color: Colors.black54,
+                child: Text(
+                  waypoint.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _WaypointDialog extends StatefulWidget {
+  const _WaypointDialog({required this.point, required this.localNodeNum});
+
+  final LatLng point;
+  final int? localNodeNum;
+
+  @override
+  State<_WaypointDialog> createState() => _WaypointDialogState();
+}
+
+class _WaypointDialogState extends State<_WaypointDialog> {
+  final _name = TextEditingController();
+  final _description = TextEditingController();
+  String _icon = '📍';
+  Duration? _lifetime = const Duration(days: 1);
+  bool _locked = false;
+
+  static const _icons = ['📍', '⛺', '🚩', '⚠️', '💧', '🚗', '🏠', '📡'];
+  static const _lifetimes = <(String, Duration?)>[
+    ('1 hour', Duration(hours: 1)),
+    ('1 day', Duration(days: 1)),
+    ('1 week', Duration(days: 7)),
+    ('Never', null),
+  ];
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _description.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = _name.text.trim();
+    return AlertDialog(
+      title: const Text('New waypoint'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${widget.point.latitude.toStringAsFixed(5)}, ${widget.point.longitude.toStringAsFixed(5)}'),
+            TextField(
+              controller: _name,
+              autofocus: true,
+              maxLength: BastionWaypointStore.maxNameLength,
+              decoration: const InputDecoration(labelText: 'Name'),
+              onChanged: (_) => setState(() {}),
+            ),
+            TextField(
+              controller: _description,
+              maxLength: BastionWaypointStore.maxDescriptionLength,
+              decoration: const InputDecoration(labelText: 'Description (optional)'),
+            ),
+            Wrap(
+              spacing: 4,
+              children: [
+                for (final icon in _icons)
+                  ChoiceChip(
+                    label: Text(icon, style: const TextStyle(fontSize: 18)),
+                    selected: _icon == icon,
+                    onSelected: (_) => setState(() => _icon = icon),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<Duration?>(
+              initialValue: _lifetime,
+              decoration: const InputDecoration(labelText: 'Expires after'),
+              items: [
+                for (final (label, value) in _lifetimes)
+                  DropdownMenuItem(value: value, child: Text(label)),
+              ],
+              onChanged: (v) => setState(() => _lifetime = v),
+            ),
+            if (widget.localNodeNum != null)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Only I can edit or delete'),
+                value: _locked,
+                onChanged: (v) => setState(() => _locked = v),
+              ),
+            const Text('Shared with everyone on channel 0.', style: TextStyle(color: Colors.white60)),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: name.isEmpty
+              ? null
+              : () => Navigator.pop(
+                    context,
+                    MeshWaypoint(
+                      id: BastionWaypointStore.newId(),
+                      latitude: widget.point.latitude,
+                      longitude: widget.point.longitude,
+                      name: name,
+                      description: _description.text.trim(),
+                      icon: _icon.runes.first,
+                      expires: _lifetime == null ? null : DateTime.now().toUtc().add(_lifetime!),
+                      lockedTo: _locked ? widget.localNodeNum! : 0,
+                    ),
+                  ),
+          child: const Text('Share'),
+        ),
+      ],
     );
   }
 }

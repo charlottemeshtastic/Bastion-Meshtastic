@@ -7,7 +7,7 @@ import '../generated/meshtastic/admin.pb.dart';
 import '../generated/meshtastic/apponly.pb.dart';
 import '../generated/meshtastic/channel.pb.dart';
 import '../generated/meshtastic/config.pb.dart';
-import '../generated/meshtastic/mesh.pb.dart' as pb show Data, MeshPacket, Position, ToRadio;
+import '../generated/meshtastic/mesh.pb.dart' as pb show Data, FromRadio, MeshPacket, Position, ToRadio;
 import '../generated/meshtastic/mesh.pb.dart' show User;
 import '../generated/meshtastic/module_config.pb.dart';
 import '../generated/meshtastic/portnums.pbenum.dart';
@@ -16,6 +16,7 @@ import 'bastion_admin_packet_codec.dart';
 import 'bastion_background_service.dart';
 import 'bastion_message_alerts.dart';
 import 'bastion_phone_position.dart';
+import 'bastion_waypoints.dart';
 import 'bastion_owner_codec.dart';
 import 'bastion_owner_readback.dart';
 import 'bastion_message_archive.dart';
@@ -45,6 +46,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
         _alerts = alerts ?? BastionLocalMessageAlerts(),
         _location = location ?? GeolocatorLocationSource() {
     unawaited(_loadSharePreference());
+    unawaited(_waypoints.load().then((_) => notifyListeners()));
     _lifecycle = AppLifecycleListener(
       onStateChange: (state) => _inForeground = state == AppLifecycleState.resumed,
     );
@@ -60,6 +62,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   final BastionBackgroundKeeper _background;
   final BastionMessageAlerts _alerts;
   final PhoneLocationSource _location;
+  final BastionWaypointStore _waypoints = BastionWaypointStore();
+  StreamSubscription<Uint8List>? _waypointSubscription;
   static const _sharePreferenceKey = 'bastion.share_phone_location';
   bool _sharePhoneLocation = false;
   BastionPhonePositionSharer? _sharer;
@@ -307,6 +311,16 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       _handshake = handshake;
       _linkLossSubscription =
           transport.linkLost.listen((_) => unawaited(_handleLinkLoss()));
+      _waypointSubscription = session.incomingEnvelopes.listen((bytes) async {
+        try {
+          final envelope = pb.FromRadio.fromBuffer(bytes);
+          if (envelope.hasPacket() && await _waypoints.handlePacket(envelope.packet)) {
+            notifyListeners();
+          }
+        } catch (_) {
+          // Malformed frames are handled by the other decoders.
+        }
+      });
 
       _identitySubscription = session.incomingEnvelopes.listen((bytes) {
         final envelope = MeshtasticPhoneApiCodec.decodeFromRadio(bytes);
@@ -624,6 +638,31 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     ).writeToBuffer());
   }
 
+  List<MeshWaypoint> get waypoints => _waypoints.waypoints;
+
+  /// Broadcasts [waypoint] on [channel] and keeps it locally.
+  Future<void> sendWaypoint(MeshWaypoint waypoint, {int channel = 0}) async {
+    final session = _session;
+    if (_busy || !connection.isReady || session == null) {
+      throw StateError('Radio must be connected and ready.');
+    }
+    await session.send(BastionWaypointStore.encode(waypoint, channel: channel));
+    await _waypoints.apply(waypoint);
+    notifyListeners();
+  }
+
+  /// Whether this radio may change or delete [waypoint].
+  bool canEditWaypoint(MeshWaypoint waypoint) =>
+      waypoint.lockedTo == 0 || waypoint.lockedTo == _localNodeNum;
+
+  /// Removes [waypoint] for everyone by broadcasting it as expired.
+  Future<void> deleteWaypoint(MeshWaypoint waypoint, {int channel = 0}) async {
+    if (!canEditWaypoint(waypoint)) {
+      throw StateError('This waypoint is locked to another node.');
+    }
+    await sendWaypoint(BastionWaypointStore.deletion(waypoint), channel: channel);
+  }
+
   /// Traces the mesh route to [nodeNum]. Only one trace runs at a time.
   Future<TracerouteResult> traceroute(int nodeNum) async {
     final traceroute = _traceroute;
@@ -778,6 +817,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     _identitySubscription = null;
     await _linkLossSubscription?.cancel();
     _linkLossSubscription = null;
+    await _waypointSubscription?.cancel();
+    _waypointSubscription = null;
     await _sharer?.stop();
     _sharer = null;
     await _admin?.dispose();
