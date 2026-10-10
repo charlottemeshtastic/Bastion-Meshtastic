@@ -54,7 +54,7 @@ jobs:
         run: |
           printf 'Label: %s\nCommit: %s\nRun: %s\n' "$BUILD_LABEL" "$BUILD_SHA" "$BUILD_RUN" > build-details.txt
       - name: Upload test package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Bastion-Test-APK-${{ github.run_number }}
           path: |

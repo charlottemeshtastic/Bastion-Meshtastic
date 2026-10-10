@@ -57,7 +57,7 @@ jobs:
           echo '### Bastion integration APK ready' >> "$GITHUB_STEP_SUMMARY"
           echo 'Download the Bastion-Integration-Test-Package artifact from this run.' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload integration test package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Bastion-Integration-Test-Package
           path: build/ci-package/
@@ -65,14 +65,14 @@ jobs:
           if-no-files-found: error
       - name: Upload CI diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Bastion-CI-Diagnostics
           path: build/ci-diagnostics/
           retention-days: 14
           if-no-files-found: warn
       - name: Upload testing APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Bastion-Development-APK
           path: build/app/outputs/flutter-apk/app-release.apk
