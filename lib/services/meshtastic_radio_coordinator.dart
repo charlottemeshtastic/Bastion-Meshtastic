@@ -7,8 +7,11 @@ import '../generated/meshtastic/admin.pb.dart';
 import '../generated/meshtastic/apponly.pb.dart';
 import '../generated/meshtastic/channel.pb.dart';
 import '../generated/meshtastic/config.pb.dart';
+import '../generated/meshtastic/mesh.pb.dart' as pb show Data, MeshPacket, Position, ToRadio;
 import '../generated/meshtastic/mesh.pb.dart' show User;
 import '../generated/meshtastic/module_config.pb.dart';
+import '../generated/meshtastic/portnums.pbenum.dart';
+import '../generated/meshtastic/telemetry.pb.dart';
 import 'bastion_admin_packet_codec.dart';
 import 'bastion_background_service.dart';
 import 'bastion_message_alerts.dart';
@@ -573,6 +576,52 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       if (a[i] != b[i]) return false;
     }
     return true;
+  }
+
+  /// Asks [nodeNum] to send its position. The reply updates [nodes].
+  ///
+  /// Like the official apps, the request carries this radio's own position
+  /// when one is known, so the other node learns where we are too.
+  Future<void> requestPosition(int nodeNum) {
+    final own = localNode;
+    return _requestFrom(
+      nodeNum,
+      PortNum.POSITION_APP,
+      (own != null && own.hasPosition
+              ? pb.Position(
+                  latitudeI: (own.latitude! * 1e7).round(),
+                  longitudeI: (own.longitude! * 1e7).round(),
+                )
+              : pb.Position())
+          .writeToBuffer(),
+    );
+  }
+
+  /// Asks [nodeNum] for device telemetry. The reply updates [deviceTelemetry].
+  Future<void> requestTelemetry(int nodeNum) => _requestFrom(
+        nodeNum,
+        PortNum.TELEMETRY_APP,
+        Telemetry(deviceMetrics: DeviceMetrics()).writeToBuffer(),
+      );
+
+  Future<void> _requestFrom(int nodeNum, PortNum port, List<int> payload) async {
+    final session = _session;
+    if (_busy || !connection.isReady || session == null) {
+      throw StateError('Radio must be connected and ready.');
+    }
+    if (nodeNum == _localNodeNum) {
+      throw ArgumentError.value(nodeNum, 'nodeNum', 'is this radio');
+    }
+    var id = DateTime.now().microsecondsSinceEpoch & 0x7fffffff;
+    if (id == 0) id = 1;
+    await session.send(pb.ToRadio(
+      packet: pb.MeshPacket(
+        to: nodeNum,
+        id: id,
+        wantAck: true,
+        decoded: pb.Data(portnum: port, payload: payload, wantResponse: true),
+      ),
+    ).writeToBuffer());
   }
 
   /// Traces the mesh route to [nodeNum]. Only one trace runs at a time.

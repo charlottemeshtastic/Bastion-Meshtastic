@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'node_detail_page.dart';
 import 'services/bastion_geo.dart';
 import 'services/meshtastic_node_database.dart';
 import 'services/meshtastic_radio_coordinator.dart';
@@ -175,6 +176,18 @@ class _MapPageState extends State<MapPage> {
                 Text(node.batteryLevel! > 100
                     ? 'Battery: external power'
                     : 'Battery: ${node.batteryLevel}%'),
+              const SizedBox(height: 12),
+              FilledButton.tonalIcon(
+                icon: const Icon(Icons.info_outline),
+                label: const Text('Open details'),
+                onPressed: () {
+                  Navigator.of(context)
+                    ..pop()
+                    ..push(MaterialPageRoute<void>(
+                      builder: (_) => NodeDetailPage(radio: widget.radio, nodeNum: node.num),
+                    ));
+                },
+              ),
             ],
           ),
         ),

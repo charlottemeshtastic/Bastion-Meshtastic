@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'map_page.dart';
+import 'node_detail_page.dart';
 import 'radio_settings_page.dart';
 import 'traceroute_page.dart';
 import 'services/meshtastic_ble_discovery.dart';
@@ -211,9 +212,10 @@ class _NodesPage extends StatelessWidget {
                 if (node.shortName?.isNotEmpty ?? false) node.shortName!,
                 node.id ?? '!${node.num.toRadixString(16).padLeft(8, '0')}',
               ].join(' • ')),
-              trailing: node.hardwareModel == null
-                  ? null
-                  : Text('HW ${node.hardwareModel}'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => NodeDetailPage(radio: radio, nodeNum: node.num),
+              )),
             )),
         ],
         if (radio.isReady) ...[
