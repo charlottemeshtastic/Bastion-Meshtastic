@@ -11,6 +11,10 @@ dependencies:
     sdk: flutter
   universal_ble: 1.2.0
   shared_preferences: 2.5.5
+  protobuf: 6.1.0
+  fixnum: 1.1.1
+  qr_flutter: 4.1.0
+  flutter_foreground_task: 10.0.0
 
 dev_dependencies:
   flutter_test:

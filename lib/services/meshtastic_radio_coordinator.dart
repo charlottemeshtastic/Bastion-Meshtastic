@@ -1,7 +1,14 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 
+import '../generated/meshtastic/admin.pb.dart';
+import '../generated/meshtastic/apponly.pb.dart';
+import '../generated/meshtastic/channel.pb.dart';
+import '../generated/meshtastic/config.pb.dart';
+import '../generated/meshtastic/mesh.pb.dart' show User;
+import '../generated/meshtastic/module_config.pb.dart';
 import 'bastion_admin_packet_codec.dart';
+import 'bastion_background_service.dart';
 import 'bastion_owner_codec.dart';
 import 'bastion_owner_readback.dart';
 import 'bastion_message_archive.dart';
@@ -11,6 +18,7 @@ import 'bastion_telemetry_codec.dart';
 import 'bastion_nodedex.dart';
 import 'meshtastic_ble_discovery.dart';
 import 'meshtastic_connection_controller.dart';
+import 'meshtastic_admin_session.dart';
 import 'meshtastic_handshake.dart';
 import 'meshtastic_messaging_service.dart';
 import 'meshtastic_node_database.dart';
@@ -18,10 +26,12 @@ import 'meshtastic_phoneapi_codec.dart';
 import 'meshtastic_radio_session.dart';
 import 'meshtastic_radio_transport.dart';
 import 'meshtastic_text_codec.dart';
+import 'meshtastic_traceroute.dart';
 
 /// Owns one verified Meshtastic radio session and exposes it to the UI.
 class MeshtasticRadioCoordinator extends ChangeNotifier {
-  MeshtasticRadioCoordinator() {
+  MeshtasticRadioCoordinator({BastionBackgroundKeeper? background})
+      : _background = background ?? BastionForegroundService() {
     connection.addListener(_relayConnectionChange);
     unawaited(_loadArchive());
     unawaited(_loadNodeDex());
@@ -31,6 +41,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       MeshtasticConnectionController();
   final BastionMessageArchive _archive = BastionMessageArchive();
   final BastionNodeDex _nodeDex = BastionNodeDex();
+  final BastionBackgroundKeeper _background;
   late final BastionReconnectSupervisor _reconnect =
       BastionReconnectSupervisor(
     reconnect: _reconnectLastDevice,
@@ -41,6 +52,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   MeshtasticHandshake? _handshake;
   MeshtasticNodeDatabase? _nodeDatabase;
   MeshtasticMessagingService? _messaging;
+  MeshtasticAdminSession? _admin;
+  MeshtasticTraceroute? _traceroute;
   StreamSubscription<List<MeshtasticNode>>? _nodeSubscription;
   StreamSubscription<MeshtasticNode>? _nodeDexSubscription;
   StreamSubscription<void>? _messageSubscription;
@@ -72,6 +85,12 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   bool get isReady => connection.isReady;
   bool get isReconnecting => _reconnect.isRunning;
   int? get localNodeNum => _localNodeNum;
+
+  /// Whether radio settings can be read and written right now.
+  bool get canAdminister => !_busy && connection.isReady && _admin != null;
+
+  bool get canTraceroute =>
+      !_busy && connection.isReady && _traceroute != null && !_traceroute!.isRunning;
   MeshtasticNode? get localNode {
     final num = _localNodeNum;
     if (num == null) return null;
@@ -166,7 +185,12 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     _reconnect.cancel();
     _userDisconnected = false;
     _lastDevice = device;
-    await _open(device);
+    try {
+      await _open(device);
+    } catch (_) {
+      await _background.release();
+      rethrow;
+    }
   }
 
   Future<void> _open(MeshtasticBleDevice device) async {
@@ -279,11 +303,25 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
       await session.connect(deviceName: device.name);
       await handshake.synchronize();
+      final nodeNum = _localNodeNum;
+      if (nodeNum != null && nodeNum != 0) {
+        _admin = MeshtasticAdminSession(
+          incoming: session.incomingEnvelopes,
+          send: session.send,
+          localNodeNum: nodeNum,
+        );
+        _traceroute = MeshtasticTraceroute(
+          incoming: session.incomingEnvelopes,
+          send: session.send,
+          localNodeNum: nodeNum,
+        );
+      }
       await messaging.flush();
 
       _nodes = nodeDatabase.nodes;
       _syncMessageSnapshot(messaging);
       notifyListeners();
+      unawaited(_background.keepAlive(radioName: device.name, reconnecting: false));
     } catch (_) {
       await _shutdownSession(resetConnection: false);
       rethrow;
@@ -359,6 +397,119 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     return packetId;
   }
 
+  MeshtasticAdminSession _requireAdmin() {
+    final admin = _admin;
+    if (!canAdminister || admin == null) {
+      throw StateError('Radio must be connected and ready to change settings.');
+    }
+    return admin;
+  }
+
+  Future<User> readOwner() => _requireAdmin().getOwner();
+
+  Future<Config> readConfig(AdminMessage_ConfigType type) =>
+      _requireAdmin().getConfig(type);
+
+  Future<Channel> readChannel(int index) => _requireAdmin().getChannel(index);
+
+  Future<ModuleConfig> readModuleConfig(AdminMessage_ModuleConfigType type) =>
+      _requireAdmin().getModuleConfig(type);
+
+  /// Writes are acknowledged by the radio; many make it reboot, after which
+  /// the reconnect supervisor restores the link.
+  Future<void> writeOwner(User owner) => _requireAdmin().setOwner(owner);
+
+  Future<void> writeConfig(Config config) => _requireAdmin().setConfig(config);
+
+  Future<void> writeChannel(Channel channel) =>
+      _requireAdmin().setChannel(channel);
+
+  Future<void> writeModuleConfig(ModuleConfig config) =>
+      _requireAdmin().setModuleConfig(config);
+
+  /// The radio's enabled channels in slot order plus its LoRa config, as
+  /// shared in a channel link.
+  Future<ChannelSet> readChannelSet() async {
+    final admin = _requireAdmin();
+    final settings = [
+      for (var i = 0; i < 8; i++)
+        if (await admin.getChannel(i) case final channel
+            when channel.role != Channel_Role.DISABLED)
+          channel.settings,
+    ];
+    final lora = (await admin.getConfig(AdminMessage_ConfigType.LORA_CONFIG)).lora;
+    return ChannelSet(settings: settings, loraConfig: lora);
+  }
+
+  /// Applies a shared channel set.
+  ///
+  /// [replace] overwrites all 8 slots and the LoRa config, as the official
+  /// apps do for a plain link. Otherwise the link's channels go into free
+  /// slots, skipping ones already present, and LoRa is left unchanged.
+  /// Returns the number of channels written.
+  Future<int> applyChannelSet(ChannelSet set, {required bool replace}) async {
+    final admin = _requireAdmin();
+    if (replace) {
+      await admin.editTransaction(() async {
+        for (var i = 0; i < 8; i++) {
+          await admin.setChannel(i < set.settings.length
+              ? Channel(
+                  index: i,
+                  role: i == 0 ? Channel_Role.PRIMARY : Channel_Role.SECONDARY,
+                  settings: set.settings[i],
+                )
+              : Channel(index: i, role: Channel_Role.DISABLED));
+        }
+        if (set.hasLoraConfig()) await admin.setConfig(Config(lora: set.loraConfig));
+      });
+      return set.settings.length;
+    }
+    final existing = [for (var i = 0; i < 8; i++) await admin.getChannel(i)];
+    bool present(ChannelSettings s) => existing.any((c) =>
+        c.role != Channel_Role.DISABLED &&
+        c.settings.name == s.name &&
+        _sameBytes(c.settings.psk, s.psk));
+    final toAdd = set.settings.where((s) => !present(s)).toList();
+    final free = existing.where((c) => c.index != 0 && c.role == Channel_Role.DISABLED).toList();
+    if (toAdd.length > free.length) {
+      throw StateError('Only ${free.length} free channel slots; the link has ${toAdd.length} new channels.');
+    }
+    if (toAdd.isEmpty) return 0;
+    await admin.editTransaction(() async {
+      for (var i = 0; i < toAdd.length; i++) {
+        await admin.setChannel(Channel(
+          index: free[i].index,
+          role: Channel_Role.SECONDARY,
+          settings: toAdd[i],
+        ));
+      }
+    });
+    return toAdd.length;
+  }
+
+  static bool _sameBytes(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// Traces the mesh route to [nodeNum]. Only one trace runs at a time.
+  Future<TracerouteResult> traceroute(int nodeNum) async {
+    final traceroute = _traceroute;
+    if (!canTraceroute || traceroute == null) {
+      throw StateError('Radio must be ready and idle to run a traceroute.');
+    }
+    final result = traceroute.trace(nodeNum);
+    notifyListeners();
+    try {
+      return await result;
+    } finally {
+      notifyListeners();
+    }
+  }
+
   Future<int> sendText({
     required String text,
     int destination = MeshtasticTextCodec.broadcastNode,
@@ -420,10 +571,12 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     if (_busy || _userDisconnected || device == null) return;
     await _shutdownSession(resetConnection: false);
     connection.beginConnect(device.name);
+    unawaited(_background.keepAlive(radioName: device.name, reconnecting: true));
     final recovery = _reconnect.recover();
     notifyListeners();
     final recovered = await recovery;
     if (!recovered && !_userDisconnected && !_busy && _session == null) {
+      unawaited(_background.release());
       connection.fail(StateError(
         'Radio link lost; reconnect gave up after ${_reconnect.attempts} '
         'attempts. Last error: ${_reconnect.lastError}',
@@ -442,6 +595,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   Future<void> disconnect() async {
     _userDisconnected = true;
     _reconnect.cancel();
+    unawaited(_background.release());
     if (_busy) return;
     _busy = true;
     notifyListeners();
@@ -471,6 +625,10 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     _identitySubscription = null;
     await _linkLossSubscription?.cancel();
     _linkLossSubscription = null;
+    await _admin?.dispose();
+    _admin = null;
+    await _traceroute?.dispose();
+    _traceroute = null;
     await _handshake?.dispose();
     _handshake = null;
     await _messaging?.dispose();
@@ -494,6 +652,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   void dispose() {
     _userDisconnected = true;
     _reconnect.cancel();
+    unawaited(_background.release());
     connection.removeListener(_relayConnectionChange);
     unawaited(_shutdownSession(resetConnection: true));
     super.dispose();
