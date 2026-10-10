@@ -1,0 +1,42 @@
+name: Bastion APK Size Monitor
+on:
+  push:
+    branches:
+      - feature/bastion-v1-integration
+  workflow_dispatch:
+concurrency:
+  group: bastion-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  size:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.5'
+          channel: stable
+      - run: |
+          flutter create --platforms=android --org org.backcountrysignal --project-name bastion .
+          rm -f test/widget_test.dart
+          python3 scripts/prepare_android.py
+          flutter pub get
+          dart run flutter_launcher_icons
+          flutter build apk --release --target-platform android-arm64
+      - name: Record APK size
+        run: |
+          bytes=$(stat -c%s build/app/outputs/flutter-apk/app-release.apk)
+          printf 'APK bytes: %s\n' "$bytes" | tee APK-SIZE.txt
+          echo "### APK size: $bytes bytes" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bastion-APK-Size-${{ github.run_number }}
+          path: APK-SIZE.txt
+          retention-days: 30

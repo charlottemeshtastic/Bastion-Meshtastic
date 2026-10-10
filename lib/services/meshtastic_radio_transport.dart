@@ -36,8 +36,10 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
   final String deviceId;
   final StreamController<Uint8List> _incoming =
       StreamController<Uint8List>.broadcast();
+  final StreamController<void> _linkLost = StreamController<void>.broadcast();
 
   StreamSubscription<Uint8List>? _fromNumSubscription;
+  StreamSubscription<bool>? _connectionSubscription;
   bool _connected = false;
   bool _draining = false;
   bool _drainAgain = false;
@@ -47,6 +49,10 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
 
   @override
   bool get isConnected => _connected;
+
+  /// Emits when the peripheral drops an established link without a local
+  /// [disconnect] call, e.g. out of range or radio reboot.
+  Stream<void> get linkLost => _linkLost.stream;
 
   @override
   Future<void> connect() async {
@@ -58,9 +64,26 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
       // There may be no active scan.
     }
 
-    await UniversalBle.connect(deviceId);
     try {
-      final services = await UniversalBle.discoverServices(deviceId);
+      await UniversalBle.connect(deviceId).timeout(
+        const Duration(seconds: 25),
+        onTimeout: () => throw TimeoutException(
+          'Native BLE connect did not complete for $deviceId',
+        ),
+      );
+    } catch (error) {
+      throw StateError('BLE connection stage failed for $deviceId: $error');
+    }
+    try {
+      List<BleService> services;
+      try {
+        services = await UniversalBle.discoverServices(deviceId).timeout(
+          const Duration(seconds: 15),
+          onTimeout: () => throw TimeoutException('GATT service discovery timed out'),
+        );
+      } catch (error) {
+        throw StateError('BLE service discovery failed: $error');
+      }
       final hasMeshtastic = services.any(
         (service) => service.uuid.toLowerCase() == MeshtasticBleGatt.service,
       );
@@ -82,13 +105,24 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
         onError: _incoming.addError,
       );
 
-      await UniversalBle.subscribeNotifications(
-        deviceId,
-        MeshtasticBleGatt.service,
-        MeshtasticBleGatt.fromNum,
-      );
+      try {
+        await UniversalBle.subscribeNotifications(
+          deviceId,
+          MeshtasticBleGatt.service,
+          MeshtasticBleGatt.fromNum,
+        ).timeout(
+          const Duration(seconds: 15),
+          onTimeout: () => throw TimeoutException('FromNum subscription timed out'),
+        );
+      } catch (error) {
+        throw StateError('BLE FromNum notification subscription failed: $error');
+      }
 
       _connected = true;
+      _connectionSubscription =
+          UniversalBle.connectionStream(deviceId).listen((connected) {
+        if (!connected && _connected) unawaited(_handleLinkLoss());
+      });
       await _drainMailbox();
     } catch (_) {
       await UniversalBle.disconnect(deviceId);
@@ -101,13 +135,33 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
     if (!_connected) {
       throw StateError('Meshtastic BLE transport is not connected.');
     }
-    await UniversalBle.write(
-      deviceId,
-      MeshtasticBleGatt.service,
-      MeshtasticBleGatt.toRadio,
-      envelope,
-      withoutResponse: false,
-    );
+    try {
+      await UniversalBle.write(
+        deviceId,
+        MeshtasticBleGatt.service,
+        MeshtasticBleGatt.toRadio,
+        envelope,
+        withoutResponse: false,
+      );
+    } catch (error) {
+      throw StateError('BLE ToRadio write failed: $error');
+    }
+
+    // A notification can be missed or arrive before the mailbox read starts.
+    // Poll after each command as a fallback; FromNum remains the primary signal.
+    unawaited(_pollAfterWrite());
+  }
+
+  Future<void> _pollAfterWrite() async {
+    for (final delay in <Duration>[
+      const Duration(milliseconds: 200),
+      const Duration(seconds: 1),
+      const Duration(seconds: 3),
+    ]) {
+      await Future<void>.delayed(delay);
+      if (!_connected) return;
+      _scheduleDrain();
+    }
   }
 
   void _scheduleDrain() {
@@ -142,9 +196,16 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
     }
   }
 
+  Future<void> _handleLinkLoss() async {
+    await disconnect();
+    if (!_linkLost.isClosed) _linkLost.add(null);
+  }
+
   @override
   Future<void> disconnect() async {
     _connected = false;
+    await _connectionSubscription?.cancel();
+    _connectionSubscription = null;
     await _fromNumSubscription?.cancel();
     _fromNumSubscription = null;
     try {
@@ -166,5 +227,6 @@ class MeshtasticUniversalBleTransport implements MeshtasticRadioTransport {
   Future<void> dispose() async {
     await disconnect();
     await _incoming.close();
+    await _linkLost.close();
   }
 }

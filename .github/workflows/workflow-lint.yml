@@ -1,0 +1,26 @@
+name: Bastion Workflow Validation
+on:
+  push:
+    paths:
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: '1.7.7'
+        run: |
+          curl -fsSLo actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          tar xzf actionlint.tar.gz actionlint
+          sudo install actionlint /usr/local/bin/actionlint
+      - name: Validate GitHub Actions YAML
+        run: actionlint -color

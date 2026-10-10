@@ -1,0 +1,31 @@
+name: Bastion PR Quality Gate
+on:
+  pull_request:
+    branches:
+      - main
+      - feature/bastion-beta
+      - feature/bastion-v1-integration
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/pr-quality.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Static analysis
+        run: flutter analyze
+      - name: Unit and widget tests
+        run: flutter test --reporter expanded

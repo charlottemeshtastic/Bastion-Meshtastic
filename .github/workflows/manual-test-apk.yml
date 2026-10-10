@@ -1,0 +1,66 @@
+name: Bastion On-Demand Test APK
+on:
+  workflow_dispatch:
+    inputs:
+      build_label:
+        description: 'Build label (letters, numbers, hyphens)'
+        required: true
+        default: 'field-test'
+        type: string
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 25
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.5'
+          channel: stable
+          cache: true
+      - name: Generate Android platform
+        run: |
+          flutter create --platforms=android --org org.backcountrysignal --project-name bastion .
+          rm -f test/widget_test.dart
+          python3 scripts/prepare_android.py
+      - run: |
+          flutter pub get
+          dart run flutter_launcher_icons
+          flutter analyze
+          flutter test
+      - name: Build APK
+        run: flutter build apk --release --target-platform android-arm64
+      - name: Verify APK and checksum
+        run: |
+          test -s build/app/outputs/flutter-apk/app-release.apk
+          sha256sum build/app/outputs/flutter-apk/app-release.apk > APK-SHA256.txt
+      - name: Generate build change summary
+        run: |
+          git log -n 20 --pretty=format:'- %h %s' > RELEASE-NOTES.txt
+          printf '\n' >> RELEASE-NOTES.txt
+      - name: Record build details
+        env:
+          BUILD_LABEL: ${{ inputs.build_label }}
+          BUILD_SHA: ${{ github.sha }}
+          BUILD_RUN: ${{ github.run_id }}
+        run: |
+          printf 'Label: %s\nCommit: %s\nRun: %s\n' "$BUILD_LABEL" "$BUILD_SHA" "$BUILD_RUN" > build-details.txt
+      - name: Upload test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bastion-Test-APK-${{ github.run_number }}
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build-details.txt
+            APK-SHA256.txt
+            RELEASE-NOTES.txt
+          retention-days: 30
+          if-no-files-found: error

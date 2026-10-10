@@ -1,0 +1,59 @@
+name: Bastion Nightly Integration
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bastion-nightly
+  cancel-in-progress: false
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/bastion-v1-integration
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.5'
+          channel: stable
+          cache: true
+      - name: Generate Android project
+        run: |
+          flutter create --platforms=android --org org.backcountrysignal --project-name bastion .
+          rm -f test/widget_test.dart
+          python3 scripts/prepare_android.py
+      - run: flutter pub get
+      - name: Generate app icons
+        run: dart run flutter_launcher_icons
+      - name: Validate source
+        run: |
+          flutter analyze
+          flutter test --coverage
+      - name: Protocol and coverage reports
+        run: |
+          test -s coverage/lcov.info
+          echo 'Nightly Flutter tests and LCOV coverage completed.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Build ARM64 APK
+        run: flutter build apk --release --target-platform android-arm64
+      - name: Verify APK and record SHA256
+        run: |
+          test -s build/app/outputs/flutter-apk/app-release.apk
+          sha256sum build/app/outputs/flutter-apk/app-release.apk > APK-SHA256.txt
+      - name: Save nightly APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bastion-Nightly-${{ github.run_number }}-${{ github.sha }}
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            APK-SHA256.txt
+            coverage/lcov.info
+          retention-days: 7
+          if-no-files-found: error
