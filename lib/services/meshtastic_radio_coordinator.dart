@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../generated/meshtastic/admin.pb.dart';
 import '../generated/meshtastic/apponly.pb.dart';
@@ -11,6 +12,7 @@ import '../generated/meshtastic/module_config.pb.dart';
 import 'bastion_admin_packet_codec.dart';
 import 'bastion_background_service.dart';
 import 'bastion_message_alerts.dart';
+import 'bastion_phone_position.dart';
 import 'bastion_owner_codec.dart';
 import 'bastion_owner_readback.dart';
 import 'bastion_message_archive.dart';
@@ -35,8 +37,11 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   MeshtasticRadioCoordinator({
     BastionBackgroundKeeper? background,
     BastionMessageAlerts? alerts,
+    PhoneLocationSource? location,
   })  : _background = background ?? BastionForegroundService(),
-        _alerts = alerts ?? BastionLocalMessageAlerts() {
+        _alerts = alerts ?? BastionLocalMessageAlerts(),
+        _location = location ?? GeolocatorLocationSource() {
+    unawaited(_loadSharePreference());
     _lifecycle = AppLifecycleListener(
       onStateChange: (state) => _inForeground = state == AppLifecycleState.resumed,
     );
@@ -51,6 +56,11 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   final BastionNodeDex _nodeDex = BastionNodeDex();
   final BastionBackgroundKeeper _background;
   final BastionMessageAlerts _alerts;
+  final PhoneLocationSource _location;
+  static const _sharePreferenceKey = 'bastion.share_phone_location';
+  bool _sharePhoneLocation = false;
+  BastionPhonePositionSharer? _sharer;
+  String? _locationShareProblem;
   late final AppLifecycleListener _lifecycle;
   bool _inForeground = true;
   late final BastionReconnectSupervisor _reconnect =
@@ -100,6 +110,59 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
   /// Whether radio settings can be read and written right now.
   bool get canAdminister => !_busy && connection.isReady && _admin != null;
+
+  /// Whether the phone's location is sent to the radio for broadcasting.
+  bool get sharePhoneLocation => _sharePhoneLocation;
+
+  /// Why sharing is not running, e.g. permission denied; null when fine.
+  String? get locationShareProblem => _locationShareProblem;
+  DateTime? get lastPhonePositionSent => _sharer?.lastSentAt;
+
+  Future<void> setSharePhoneLocation(bool enabled) async {
+    _sharePhoneLocation = enabled;
+    _locationShareProblem = null;
+    notifyListeners();
+    try {
+      await SharedPreferencesAsync().setBool(_sharePreferenceKey, enabled);
+    } catch (_) {
+      // Preference storage is best effort.
+    }
+    if (enabled) {
+      await _startSharing();
+    } else {
+      await _sharer?.stop();
+      _sharer = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _loadSharePreference() async {
+    try {
+      _sharePhoneLocation =
+          await SharedPreferencesAsync().getBool(_sharePreferenceKey) ?? false;
+      notifyListeners();
+    } catch (_) {
+      // Default stays off.
+    }
+  }
+
+  Future<void> _startSharing() async {
+    final session = _session;
+    final nodeNum = _localNodeNum;
+    if (!_sharePhoneLocation || session == null || nodeNum == null || !connection.isReady) {
+      return;
+    }
+    if (_sharer?.isRunning ?? false) return;
+    final sharer = BastionPhonePositionSharer(
+      source: _location,
+      send: session.send,
+      localNodeNum: nodeNum,
+    );
+    _sharer = sharer;
+    _locationShareProblem = await sharer.start();
+    if (_locationShareProblem != null) _sharer = null;
+    notifyListeners();
+  }
 
   bool get canTraceroute =>
       !_busy && connection.isReady && _traceroute != null && !_traceroute!.isRunning;
@@ -333,6 +396,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
         );
       }
       await messaging.flush();
+      unawaited(_startSharing());
 
       _nodes = nodeDatabase.nodes;
       _syncMessageSnapshot(messaging);
@@ -665,6 +729,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     _identitySubscription = null;
     await _linkLossSubscription?.cancel();
     _linkLossSubscription = null;
+    await _sharer?.stop();
+    _sharer = null;
     await _admin?.dispose();
     _admin = null;
     await _traceroute?.dispose();

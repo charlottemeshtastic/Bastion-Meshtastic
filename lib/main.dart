@@ -778,6 +778,29 @@ class _SettingsPage extends StatelessWidget {
           ],
         )),
       ),
+      AnimatedBuilder(
+        animation: radio,
+        builder: (context, _) {
+          final sent = radio.lastPhonePositionSent;
+          final status = radio.locationShareProblem ??
+              (!radio.sharePhoneLocation
+                  ? 'Off. Your phone location is never sent.'
+                  : !radio.isReady
+                      ? 'On. Starts when a radio is connected.'
+                      : sent == null
+                          ? 'On. Waiting for a GPS fix.'
+                          : 'On. Last sent ${sent.toLocal().toString().substring(11, 16)}.');
+          return Card(child: SwitchListTile(
+            secondary: const Icon(Icons.share_location),
+            title: const Text('Share phone location with mesh'),
+            subtitle: Text('$status\nThe radio broadcasts it when it has no GPS of its own. '
+                'Updates every 5 min, or sooner when you move.'),
+            isThreeLine: true,
+            value: radio.sharePhoneLocation,
+            onChanged: (value) => radio.setSharePhoneLocation(value),
+          ));
+        },
+      ),
       Card(child: SwitchListTile(
         secondary: const Icon(Icons.battery_saver_outlined),
         title: const Text('Low-power field mode'),
