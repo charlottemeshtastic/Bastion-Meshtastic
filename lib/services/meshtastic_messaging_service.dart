@@ -1,8 +1,14 @@
 export 'bastion_chat_message.dart';
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:protobuf/protobuf.dart';
+
+import '../generated/meshtastic/mesh.pb.dart' as pb;
+import '../generated/meshtastic/portnums.pbenum.dart';
+import '../generated/meshtastic/storeforward.pb.dart';
 import 'bastion_chat_message.dart';
 import 'bastion_message_archive.dart';
 import 'meshtastic_connection_controller.dart';
@@ -154,6 +160,36 @@ class MeshtasticMessagingService {
     ));
   }
 
+  /// A text message a store-and-forward router replays from its history.
+  ///
+  /// Replays arrive on STORE_FORWARD_APP, not TEXT_MESSAGE_APP. They carry
+  /// the original packet id, so a message already received is de-duplicated.
+  static MeshtasticTextMessage? storeForwardReplay(Uint8List meshPacket) {
+    try {
+      final packet = pb.MeshPacket.fromBuffer(meshPacket);
+      if (!packet.hasDecoded() || packet.decoded.portnum != PortNum.STORE_FORWARD_APP) {
+        return null;
+      }
+      final sf = StoreAndForward.fromBuffer(packet.decoded.payload);
+      final broadcast = sf.rr == StoreAndForward_RequestResponse.ROUTER_TEXT_BROADCAST;
+      if (!broadcast && sf.rr != StoreAndForward_RequestResponse.ROUTER_TEXT_DIRECT) {
+        return null;
+      }
+      if (sf.text.isEmpty) return null;
+      return MeshtasticTextMessage(
+        packetId: sf.originalId != 0 ? sf.originalId : packet.id,
+        from: packet.from,
+        to: broadcast ? MeshtasticTextCodec.broadcastNode : packet.to,
+        channel: packet.channel,
+        text: utf8.decode(sf.text, allowMalformed: true),
+        rxTime: packet.rxTime == 0 ? null : packet.rxTime,
+        rxSnr: packet.rxSnr == 0 ? null : packet.rxSnr,
+      );
+    } on InvalidProtocolBufferException {
+      return null;
+    }
+  }
+
   void _handleEnvelope(Uint8List bytes) {
     try {
       final envelope = MeshtasticPhoneApiCodec.decodeFromRadio(bytes);
@@ -176,7 +212,8 @@ class MeshtasticMessagingService {
         }
         return;
       }
-      final message = MeshtasticTextCodec.decodeMeshPacket(envelope.payload!);
+      final replay = storeForwardReplay(envelope.payload!);
+      final message = replay ?? MeshtasticTextCodec.decodeMeshPacket(envelope.payload!);
       if (message == null) return;
       final key = '${message.from}:${message.packetId}';
       if (!_seen.add(key)) return;
@@ -203,7 +240,8 @@ class MeshtasticMessagingService {
       _trimHistory();
       _incoming.add(message);
       _notify();
-      unawaited(_maybeBotReply(message));
+      // Replayed history is old; auto-replying to it would spam the mesh.
+      if (replay == null) unawaited(_maybeBotReply(message));
     } catch (error, stackTrace) {
       _incoming.addError(error, stackTrace);
     }
