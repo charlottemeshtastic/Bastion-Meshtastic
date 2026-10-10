@@ -30,7 +30,7 @@ jobs:
         run: flutter test --reporter expanded > diagnostics/tests.log 2>&1
       - name: Upload diagnostics even on failure
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Bastion-Diagnostics-${{ github.run_number }}
           path: diagnostics/

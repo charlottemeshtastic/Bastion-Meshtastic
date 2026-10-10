@@ -51,7 +51,7 @@ jobs:
           git log -n 20 --pretty=format:'- %h %s' > release-package/CHANGES.txt
           printf '\n' >> release-package/CHANGES.txt
       - name: Upload candidate bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Bastion-Release-Candidate-${{ github.run_number }}
           path: release-package/

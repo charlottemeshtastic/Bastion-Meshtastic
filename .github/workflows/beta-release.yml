@@ -43,7 +43,7 @@ jobs:
           (cd beta && sha256sum Bastion-Beta-arm64.apk > SHA256SUMS.txt)
           git log -n 20 --pretty=format:'- %h %s' > beta/CHANGES.md
           printf '\nBeta label: %s\nCommit: %s\n' "$BETA_LABEL" "$GITHUB_SHA" > beta/BUILD-INFO.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Bastion-Beta-${{ github.run_number }}
           path: beta/
