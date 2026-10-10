@@ -2,13 +2,18 @@ import 'package:flutter/material.dart';
 import 'map_page.dart';
 import 'node_detail_page.dart';
 import 'radio_settings_page.dart';
+import 'services/bastion_tile_cache.dart';
 import 'traceroute_page.dart';
 import 'services/meshtastic_ble_discovery.dart';
 import 'services/meshtastic_connection_controller.dart';
 import 'services/meshtastic_messaging_service.dart';
 import 'services/meshtastic_radio_coordinator.dart';
 
-void main() => runApp(const BastionApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await BastionTileCache.initialize();
+  runApp(const BastionApp());
+}
 
 class BastionApp extends StatelessWidget {
   const BastionApp({super.key});
@@ -803,6 +808,7 @@ class _SettingsPage extends StatelessWidget {
           ));
         },
       ),
+      const _MapCacheCard(),
       Card(child: SwitchListTile(
         secondary: const Icon(Icons.battery_saver_outlined),
         title: const Text('Low-power field mode'),
@@ -951,3 +957,36 @@ String _connectionLabel(MeshtasticConnectionState state) => switch (state) {
   MeshtasticConnectionState.ready => 'CONNECTED',
   MeshtasticConnectionState.error => 'ERROR',
 };
+
+class _MapCacheCard extends StatefulWidget {
+  const _MapCacheCard();
+
+  @override
+  State<_MapCacheCard> createState() => _MapCacheCardState();
+}
+
+class _MapCacheCardState extends State<_MapCacheCard> {
+  late Future<int?> _size = BastionTileCache.sizeBytes();
+
+  @override
+  Widget build(BuildContext context) => Card(child: FutureBuilder<int?>(
+    future: _size,
+    builder: (context, snapshot) {
+      final bytes = snapshot.data;
+      return ListTile(
+        leading: const Icon(Icons.offline_pin_outlined),
+        title: const Text('Offline map tiles'),
+        subtitle: Text('${bytes == null ? 'Size unknown' : '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB saved'}'
+          '\nMap areas you view online stay available offline for a year (up to 500 MB).'),
+        isThreeLine: true,
+        trailing: TextButton(
+          onPressed: bytes == null || bytes == 0 ? null : () async {
+            await BastionTileCache.clear();
+            if (mounted) setState(() => _size = BastionTileCache.sizeBytes());
+          },
+          child: const Text('Clear'),
+        ),
+      );
+    },
+  ));
+}
