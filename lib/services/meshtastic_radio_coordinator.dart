@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
+import 'package:flutter/widgets.dart';
 
 import '../generated/meshtastic/admin.pb.dart';
 import '../generated/meshtastic/apponly.pb.dart';
@@ -9,6 +10,7 @@ import '../generated/meshtastic/mesh.pb.dart' show User;
 import '../generated/meshtastic/module_config.pb.dart';
 import 'bastion_admin_packet_codec.dart';
 import 'bastion_background_service.dart';
+import 'bastion_message_alerts.dart';
 import 'bastion_owner_codec.dart';
 import 'bastion_owner_readback.dart';
 import 'bastion_message_archive.dart';
@@ -30,8 +32,14 @@ import 'meshtastic_traceroute.dart';
 
 /// Owns one verified Meshtastic radio session and exposes it to the UI.
 class MeshtasticRadioCoordinator extends ChangeNotifier {
-  MeshtasticRadioCoordinator({BastionBackgroundKeeper? background})
-      : _background = background ?? BastionForegroundService() {
+  MeshtasticRadioCoordinator({
+    BastionBackgroundKeeper? background,
+    BastionMessageAlerts? alerts,
+  })  : _background = background ?? BastionForegroundService(),
+        _alerts = alerts ?? BastionLocalMessageAlerts() {
+    _lifecycle = AppLifecycleListener(
+      onStateChange: (state) => _inForeground = state == AppLifecycleState.resumed,
+    );
     connection.addListener(_relayConnectionChange);
     unawaited(_loadArchive());
     unawaited(_loadNodeDex());
@@ -42,6 +50,9 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   final BastionMessageArchive _archive = BastionMessageArchive();
   final BastionNodeDex _nodeDex = BastionNodeDex();
   final BastionBackgroundKeeper _background;
+  final BastionMessageAlerts _alerts;
+  late final AppLifecycleListener _lifecycle;
+  bool _inForeground = true;
   late final BastionReconnectSupervisor _reconnect =
       BastionReconnectSupervisor(
     reconnect: _reconnectLastDevice,
@@ -59,6 +70,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   StreamSubscription<void>? _messageSubscription;
   StreamSubscription<Uint8List>? _identitySubscription;
   StreamSubscription<void>? _linkLossSubscription;
+  StreamSubscription<MeshtasticTextMessage>? _incomingSubscription;
   MeshtasticBleDevice? _lastDevice;
   bool _userDisconnected = false;
   List<MeshtasticNode> _nodes = const [];
@@ -300,6 +312,10 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
         _syncMessageSnapshot(messaging);
         notifyListeners();
       });
+      _incomingSubscription = messaging.incoming.listen(
+        _alertIncoming,
+        onError: (Object _) {},
+      );
 
       await session.connect(deviceName: device.name);
       await handshake.synchronize();
@@ -565,6 +581,28 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     return packetId;
   }
 
+  /// Notifies about a message that arrives while the app is backgrounded.
+  void _alertIncoming(MeshtasticTextMessage message) {
+    if (_inForeground) return;
+    String sender = '!${message.from.toRadixString(16).padLeft(8, '0')}';
+    for (final node in _nodes) {
+      if (node.num == message.from) sender = node.displayName;
+    }
+    unawaited(_alerts.show(
+      packetId: message.packetId,
+      sender: sender,
+      text: message.text,
+      isDirect: !message.isBroadcast,
+      channel: message.channel,
+    ));
+  }
+
+  @visibleForTesting
+  set inForeground(bool value) => _inForeground = value;
+
+  @visibleForTesting
+  void alertIncomingForTest(MeshtasticTextMessage message) => _alertIncoming(message);
+
   /// Tears down a dropped session and retries the last radio with backoff.
   Future<void> _handleLinkLoss() async {
     final device = _lastDevice;
@@ -621,6 +659,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     _nodeDexSubscription = null;
     await _messageSubscription?.cancel();
     _messageSubscription = null;
+    await _incomingSubscription?.cancel();
+    _incomingSubscription = null;
     await _identitySubscription?.cancel();
     _identitySubscription = null;
     await _linkLossSubscription?.cancel();
@@ -650,6 +690,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     _userDisconnected = true;
     _reconnect.cancel();
     unawaited(_background.release());

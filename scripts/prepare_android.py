@@ -26,4 +26,21 @@ if 'flutter_foreground_task.service.ForegroundService' not in s:
     </application>'''
     s=s.replace('    </application>', service, 1)
 p.write_text(s)
-print('Prepared Android manifest')
+
+# flutter_local_notifications needs core library desugaring.
+g=Path('android/app/build.gradle.kts')
+gradle=g.read_text()
+if 'isCoreLibraryDesugaringEnabled' not in gradle:
+    gradle=gradle.replace('    compileOptions {\n', '    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n', 1)
+    gradle=gradle.replace('\nflutter {', '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n\nflutter {', 1)
+    if 'isCoreLibraryDesugaringEnabled' not in gradle or 'desugar_jdk_libs' not in gradle:
+        raise SystemExit('Could not enable desugaring in build.gradle.kts')
+    g.write_text(gradle)
+
+# Keep the launcher icon used for notifications through R8 resource shrinking.
+keep=Path('android/app/src/main/res/raw/keep.xml')
+keep.parent.mkdir(parents=True, exist_ok=True)
+keep.write_text('<?xml version="1.0" encoding="utf-8"?>\n'
+    '<resources xmlns:tools="http://schemas.android.com/tools"\n'
+    '    tools:keep="@mipmap/ic_launcher" />\n')
+print('Prepared Android manifest and Gradle')
