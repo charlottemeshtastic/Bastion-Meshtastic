@@ -14,6 +14,7 @@ import '../generated/meshtastic/portnums.pbenum.dart';
 import '../generated/meshtastic/telemetry.pb.dart';
 import 'bastion_admin_packet_codec.dart';
 import 'bastion_background_service.dart';
+import 'bastion_bluetooth_state.dart';
 import 'bastion_message_alerts.dart';
 import 'bastion_phone_position.dart';
 import 'bastion_waypoints.dart';
@@ -21,6 +22,7 @@ import 'bastion_owner_codec.dart';
 import 'bastion_owner_readback.dart';
 import 'bastion_message_archive.dart';
 import 'bastion_radio_config_codec.dart';
+import 'bastion_reconnect_policy.dart';
 import 'bastion_reconnect_supervisor.dart';
 import 'bastion_telemetry_codec.dart';
 import 'bastion_nodedex.dart';
@@ -42,10 +44,13 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     BastionBackgroundKeeper? background,
     BastionMessageAlerts? alerts,
     PhoneLocationSource? location,
+    BluetoothAvailability? bluetooth,
   })  : _background = background ?? BastionForegroundService(),
+        _bluetooth = bluetooth ?? UniversalBleAvailability(),
         _alerts = alerts ?? BastionLocalMessageAlerts(),
         _location = location ?? GeolocatorLocationSource() {
     unawaited(_loadSharePreference());
+    _bluetoothSubscription = _bluetooth.changes.listen(_handleBluetoothChange);
     unawaited(_waypoints.load().then((_) => notifyListeners()));
     _lifecycle = AppLifecycleListener(
       onStateChange: (state) => _inForeground = state == AppLifecycleState.resumed,
@@ -62,6 +67,12 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   final BastionBackgroundKeeper _background;
   final BastionMessageAlerts _alerts;
   final PhoneLocationSource _location;
+  final BluetoothAvailability _bluetooth;
+  late final StreamSubscription<bool> _bluetoothSubscription;
+  bool _bluetoothOn = true;
+
+  /// A link was lost while Bluetooth was off; reconnect when it returns.
+  bool _waitingForBluetooth = false;
   final BastionWaypointStore _waypoints = BastionWaypointStore();
   StreamSubscription<Uint8List>? _waypointSubscription;
   static const _sharePreferenceKey = 'bastion.share_phone_location';
@@ -73,7 +84,12 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   late final BastionReconnectSupervisor _reconnect =
       BastionReconnectSupervisor(
     reconnect: _reconnectLastDevice,
-    mayReconnect: () => !_userDisconnected && _lastDevice != null,
+    mayReconnect: () =>
+        _lastDevice != null &&
+        BastionReconnectPolicy.shouldReconnect(
+          userDisconnected: _userDisconnected,
+          bluetoothEnabled: _bluetoothOn,
+        ),
   );
 
   MeshtasticRadioSession? _session;
@@ -112,7 +128,8 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
       _messaging?.pending.length ?? _archivedPending.length;
   bool get busy => _busy;
   bool get isReady => connection.isReady;
-  bool get isReconnecting => _reconnect.isRunning;
+  bool get isReconnecting => _reconnect.isRunning || _waitingForBluetooth;
+  bool get bluetoothOn => _bluetoothOn;
   int? get localNodeNum => _localNodeNum;
 
   /// Whether radio settings can be read and written right now.
@@ -752,6 +769,14 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   @visibleForTesting
   set inForeground(bool value) => _inForeground = value;
 
+  /// Starts link recovery for [device] as if its link had just dropped.
+  @visibleForTesting
+  Future<void> recoverLinkForTest(MeshtasticBleDevice device) {
+    _lastDevice = device;
+    _userDisconnected = false;
+    return _recoverLink(device);
+  }
+
   @visibleForTesting
   void alertIncomingForTest(MeshtasticTextMessage message) => _alertIncoming(message);
 
@@ -760,11 +785,44 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
     final device = _lastDevice;
     if (_busy || _userDisconnected || device == null) return;
     await _shutdownSession(resetConnection: false);
+    await _recoverLink(device);
+  }
+
+  void _handleBluetoothChange(bool on) {
+    _bluetoothOn = on;
+    final device = _lastDevice;
+    if (on && _waitingForBluetooth && device != null && !_userDisconnected &&
+        !_busy && _session == null && !_reconnect.isRunning) {
+      unawaited(_recoverLink(device));
+    }
+    notifyListeners();
+  }
+
+  Future<void> _recoverLink(MeshtasticBleDevice device) async {
+    // Checked here rather than at startup: the change stream can miss a
+    // state flip made while the app was suspended.
+    _bluetoothOn = await _bluetooth.isOn();
+    if (_userDisconnected) return;
+    if (!_bluetoothOn) {
+      _waitingForBluetooth = true;
+      unawaited(_background.keepAlive(radioName: device.name, reconnecting: true));
+      connection.fail(StateError(
+        'Bluetooth is off. Bastion will reconnect to ${device.name} when it is turned back on.',
+      ));
+      notifyListeners();
+      return;
+    }
+    _waitingForBluetooth = false;
     connection.beginConnect(device.name);
     unawaited(_background.keepAlive(radioName: device.name, reconnecting: true));
     final recovery = _reconnect.recover();
     notifyListeners();
     final recovered = await recovery;
+    if (!recovered && !_bluetoothOn && !_userDisconnected) {
+      // Bluetooth went off mid-recovery; wait for it instead of giving up.
+      await _recoverLink(device);
+      return;
+    }
     if (!recovered && !_userDisconnected && !_busy && _session == null) {
       unawaited(_background.release());
       connection.fail(StateError(
@@ -784,6 +842,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
 
   Future<void> disconnect() async {
     _userDisconnected = true;
+    _waitingForBluetooth = false;
     _reconnect.cancel();
     unawaited(_background.release());
     if (_busy) return;
@@ -847,6 +906,7 @@ class MeshtasticRadioCoordinator extends ChangeNotifier {
   @override
   void dispose() {
     _lifecycle.dispose();
+    unawaited(_bluetoothSubscription.cancel());
     _userDisconnected = true;
     _reconnect.cancel();
     unawaited(_background.release());
